@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "mydish",
+    "slug": "mydish",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFF8EE"
+      }
+    }
+  }
+}
+
