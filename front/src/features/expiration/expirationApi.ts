@@ -5,6 +5,7 @@ import {
   ExpirationItem,
   ExpirationScanResult,
   LocalImage,
+  UpdateExpirationItem,
 } from './types';
 
 const API_BASE_URL =
@@ -56,6 +57,17 @@ export function deleteExpirationItem(id: string) {
   return request<void>(`/expiration-items/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
+}
+
+export function updateExpirationItem(id: string, input: UpdateExpirationItem) {
+  return request<ExpirationItem>(
+    `/expiration-items/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function scanExpirationImage(image: LocalImage) {

@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { createExpirationItem } from './expirationApi';
+import { createExpirationItem, updateExpirationItem } from './expirationApi';
 import {
   EXPIRATION_ITEM_UNITS,
   ExpirationItem,
@@ -27,19 +27,37 @@ const UNIT_LABELS: Record<ExpirationItemUnit, string> = {
   CAN: '캔',
 };
 
-type Props = {
+type RegistrationProps = {
   scan: ExpirationScanResult;
+  item?: never;
   onRegistered(item: ExpirationItem): void | Promise<void>;
+  onUpdated?: never;
+  onCancel?: never;
 };
 
-export function ExpirationRegistrationForm({ scan, onRegistered }: Props) {
-  const [name, setName] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [unit, setUnit] = useState<ExpirationItemUnit>('COUNT');
+type EditProps = {
+  scan?: never;
+  item: ExpirationItem;
+  onRegistered?: never;
+  onUpdated(item: ExpirationItem): void | Promise<void>;
+  onCancel(): void;
+};
+
+type Props = RegistrationProps | EditProps;
+
+export function ExpirationRegistrationForm(props: Props) {
+  const editingItem = props.item;
+  const scan = props.scan;
+  const [name, setName] = useState(editingItem?.name ?? '');
+  const [quantity, setQuantity] = useState(editingItem?.quantity ?? '1');
+  const [unit, setUnit] = useState<ExpirationItemUnit>(
+    editingItem?.unit ?? 'COUNT',
+  );
   const [isUnitOpen, setIsUnitOpen] = useState(false);
   const [expirationDate, setExpirationDate] = useState(
-    scan.candidates[0]?.expirationDate ?? '',
+    editingItem?.expirationDate ?? scan?.candidates[0]?.expirationDate ?? '',
   );
+  const [purchasedAt, setPurchasedAt] = useState(editingItem?.purchasedAt ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
 
@@ -61,14 +79,31 @@ export function ExpirationRegistrationForm({ scan, onRegistered }: Props) {
     setIsSaving(true);
     setErrorMessage(undefined);
     try {
-      const item = await createExpirationItem({
-        scanId: scan.scanId,
-        name: name.trim(),
-        quantity,
-        unit,
-        expirationDate: expirationDate || null,
-      });
-      await onRegistered(item);
+      if (editingItem) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt)) {
+          setErrorMessage('구매일은 YYYY-MM-DD 형식으로 입력해주세요.');
+          return;
+        }
+        const item = await updateExpirationItem(editingItem.id, {
+          name: name.trim(),
+          quantity,
+          unit,
+          purchasedAt,
+          expirationDate: expirationDate || null,
+        });
+        await props.onUpdated(item);
+      } else if (scan) {
+        const item = await createExpirationItem({
+          scanId: scan.scanId,
+          name: name.trim(),
+          quantity,
+          unit,
+          expirationDate: expirationDate || null,
+        });
+        await props.onRegistered(item);
+      } else {
+        throw new Error('등록할 스캔 정보가 없습니다.');
+      }
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : '식재료를 저장하지 못했습니다.',
@@ -80,8 +115,14 @@ export function ExpirationRegistrationForm({ scan, onRegistered }: Props) {
 
   return (
     <View style={styles.formCard}>
-      <Text style={styles.title}>인식 결과 확인 및 등록</Text>
-      <Text style={styles.helper}>구매일은 등록하는 오늘 날짜로 자동 저장됩니다.</Text>
+      <Text style={styles.title}>
+        {editingItem ? '식재료 정보 수정' : '인식 결과 확인 및 등록'}
+      </Text>
+      <Text style={styles.helper}>
+        {editingItem
+          ? '저장하면 냉장고 목록에 바로 반영됩니다.'
+          : '구매일은 등록하는 오늘 날짜로 자동 저장됩니다.'}
+      </Text>
 
       <Text style={styles.label}>식재료 이름</Text>
       <TextInput
@@ -137,7 +178,7 @@ export function ExpirationRegistrationForm({ scan, onRegistered }: Props) {
           <Text style={styles.clearAction}>입력 안 함</Text>
         </Pressable>
       </View>
-      {scan.candidates.length > 0 && (
+      {scan && scan.candidates.length > 0 && (
         <View style={styles.candidates}>
           {scan.candidates.map((candidate) => (
             <Pressable
@@ -162,19 +203,50 @@ export function ExpirationRegistrationForm({ scan, onRegistered }: Props) {
         value={expirationDate}
       />
 
+      {editingItem && (
+        <>
+          <Text style={styles.label}>구매일</Text>
+          <TextInput
+            editable={!isSaving}
+            maxLength={10}
+            onChangeText={setPurchasedAt}
+            placeholder="YYYY-MM-DD"
+            style={styles.input}
+            value={purchasedAt}
+          />
+        </>
+      )}
+
       {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
-      <Pressable
-        accessibilityRole="button"
-        disabled={isSaving}
-        onPress={() => void save()}
-        style={[styles.saveButton, isSaving && styles.disabled]}
-      >
-        {isSaving ? (
-          <ActivityIndicator color="#ffffff" />
-        ) : (
-          <Text style={styles.saveButtonText}>냉장고에 등록</Text>
+      <View style={editingItem ? styles.editActions : undefined}>
+        {editingItem && (
+          <Pressable
+            disabled={isSaving}
+            onPress={props.onCancel}
+            style={styles.cancelButton}
+          >
+            <Text style={styles.cancelButtonText}>취소</Text>
+          </Pressable>
         )}
-      </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          disabled={isSaving}
+          onPress={() => void save()}
+          style={[
+            styles.saveButton,
+            editingItem && styles.editSaveButton,
+            isSaving && styles.disabled,
+          ]}
+        >
+          {isSaving ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.saveButtonText}>
+              {editingItem ? '수정 내용 저장' : '냉장고에 등록'}
+            </Text>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -202,6 +274,10 @@ const styles = StyleSheet.create({
   dateCandidateText: { color: '#36513f', fontSize: 13, fontWeight: '700' },
   error: { color: '#9b4037', fontSize: 14, lineHeight: 20, marginTop: 12 },
   saveButton: { alignItems: 'center', backgroundColor: '#2f6b45', borderRadius: 14, marginTop: 18, padding: 15 },
+  editActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  editSaveButton: { flex: 1, marginTop: 0 },
+  cancelButton: { alignItems: 'center', borderColor: '#b8c4ba', borderRadius: 14, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 22 },
+  cancelButtonText: { color: '#536159', fontSize: 16, fontWeight: '800' },
   saveButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
   disabled: { opacity: 0.65 },
 });

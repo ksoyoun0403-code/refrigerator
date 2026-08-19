@@ -34,3 +34,12 @@ export type CreateExpirationItem = {
   purchasedAt?: string;
   expirationDate?: string | null;
 };
+
+export type UpdateExpirationItem = {
+  name?: string;
+  quantity?: string;
+  unit?: ExpirationItemUnit;
+  purchasedAt?: string;
+  expirationDate?: string | null;
+  section?: 'DEFAULT' | 'USE_SOON';
+};

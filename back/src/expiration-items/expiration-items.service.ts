@@ -10,6 +10,7 @@ import {
   EXPIRATION_ITEM_UNITS,
   ExpirationItem,
   ExpirationItemUnit,
+  UpdateExpirationItem,
 } from './expiration-item';
 
 const UUID_PATTERN =
@@ -76,10 +77,21 @@ export class ExpirationItemsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    const items = await this.prisma.client.expirationItem.findMany({
-      orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-    });
-    return items.map(mapItem);
+    const [useSoonItems, defaultItems] = await Promise.all([
+      this.prisma.client.expirationItem.findMany({
+        where: { section: 'USE_SOON' },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.client.expirationItem.findMany({
+        where: { section: 'DEFAULT' },
+        orderBy: [
+          { expirationDate: { sort: 'asc', nulls: 'last' } },
+          { purchasedAt: 'asc' },
+          { createdAt: 'asc' },
+        ],
+      }),
+    ]);
+    return [...useSoonItems, ...defaultItems].map(mapItem);
   }
 
   async create(input: CreateExpirationItem) {
@@ -161,6 +173,48 @@ export class ExpirationItemsService {
     });
   }
 
+  async update(id: string, input: UpdateExpirationItem) {
+    this.validateId(id);
+    const normalized = this.validateUpdate(input);
+
+    const item = await this.prisma.client.$transaction(async (transaction) => {
+      const current = await transaction.expirationItem.findUnique({
+        where: { id },
+      });
+      if (!current) {
+        throw new NotFoundException('수정할 식재료를 찾을 수 없습니다.');
+      }
+
+      let sortOrder = current.sortOrder;
+      if (normalized.section === 'USE_SOON' && current.section !== 'USE_SOON') {
+        const lastPosition = await transaction.expirationItem.aggregate({
+          where: { section: 'USE_SOON' },
+          _max: { sortOrder: true },
+        });
+        sortOrder = (lastPosition._max.sortOrder ?? -1) + 1;
+      }
+
+      return transaction.expirationItem.update({
+        where: { id },
+        data: {
+          ...normalized,
+          purchasedAt: normalized.purchasedAt
+            ? toDatabaseDate(normalized.purchasedAt)
+            : undefined,
+          expirationDate:
+            normalized.expirationDate === undefined
+              ? undefined
+              : normalized.expirationDate
+                ? toDatabaseDate(normalized.expirationDate)
+                : null,
+          sortOrder,
+        },
+      });
+    });
+
+    return mapItem(item);
+  }
+
   private validate(input: CreateExpirationItem) {
     const scanId = input.scanId?.trim();
     const name = input.name?.trim();
@@ -196,5 +250,73 @@ export class ExpirationItemsService {
     }
 
     return { scanId, name, quantity, unit, purchasedAt, expirationDate };
+  }
+
+  private validateUpdate(input: UpdateExpirationItem) {
+    const hasField =
+      input.name !== undefined ||
+      input.quantity !== undefined ||
+      input.unit !== undefined ||
+      input.purchasedAt !== undefined ||
+      input.expirationDate !== undefined ||
+      input.section !== undefined;
+    if (!hasField) {
+      throw new BadRequestException('수정할 정보를 하나 이상 입력해주세요.');
+    }
+
+    const name = input.name?.trim();
+    const quantity = input.quantity?.trim();
+    const purchasedAt = input.purchasedAt?.trim();
+    const expirationDate = input.expirationDate?.trim() || null;
+
+    if (input.name !== undefined && (!name || name.length > 100)) {
+      throw new BadRequestException('식재료 이름은 1~100자로 입력해주세요.');
+    }
+    if (
+      input.quantity !== undefined &&
+      (!quantity ||
+        !QUANTITY_PATTERN.test(quantity) ||
+        Number(quantity) <= 0 ||
+        Number(quantity) > 999999)
+    ) {
+      throw new BadRequestException(
+        '수량은 0보다 크고 소수점 셋째 자리까지 입력할 수 있습니다.',
+      );
+    }
+    if (
+      input.unit !== undefined &&
+      !EXPIRATION_ITEM_UNITS.includes(input.unit)
+    ) {
+      throw new BadRequestException('지원하는 수량 단위를 선택해주세요.');
+    }
+    if (input.purchasedAt !== undefined && (!purchasedAt || !isCalendarDate(purchasedAt))) {
+      throw new BadRequestException('구매일은 YYYY-MM-DD 형식이어야 합니다.');
+    }
+    if (expirationDate && !isCalendarDate(expirationDate)) {
+      throw new BadRequestException('유통기한은 YYYY-MM-DD 형식이어야 합니다.');
+    }
+    if (
+      input.section !== undefined &&
+      input.section !== 'DEFAULT' &&
+      input.section !== 'USE_SOON'
+    ) {
+      throw new BadRequestException('지원하는 냉장고 구역을 선택해주세요.');
+    }
+
+    return {
+      name: input.name === undefined ? undefined : name,
+      quantity: input.quantity === undefined ? undefined : quantity,
+      unit: input.unit,
+      purchasedAt: input.purchasedAt === undefined ? undefined : purchasedAt,
+      expirationDate:
+        input.expirationDate === undefined ? undefined : expirationDate,
+      section: input.section,
+    };
+  }
+
+  private validateId(id: string) {
+    if (!UUID_PATTERN.test(id)) {
+      throw new BadRequestException('유효한 식재료 ID가 필요합니다.');
+    }
   }
 }

@@ -34,6 +34,15 @@ export type CreateExpirationItem = {
   expirationDate: string | null;
 };
 
+export type UpdateExpirationItem = {
+  name?: string;
+  quantity?: string;
+  unit?: ExpirationItemUnit;
+  purchasedAt?: string;
+  expirationDate?: string | null;
+  section?: ExpirationItem['section'];
+};
+
 export type ExpirationCandidate = {
   rawText: string;
   expirationDate: string;
