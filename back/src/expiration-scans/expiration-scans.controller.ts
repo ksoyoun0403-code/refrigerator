@@ -18,7 +18,11 @@ export class ExpirationScansController {
   constructor(private readonly scansService: ExpirationScansService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    }),
+  )
   scan(@UploadedFile() image?: UploadedImage) {
     return this.scansService.scan(
       image

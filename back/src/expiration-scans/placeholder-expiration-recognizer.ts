@@ -9,6 +9,6 @@ import {
 @Injectable()
 export class PlaceholderExpirationRecognizer implements ExpirationRecognizer {
   async recognize(_image: ImageInput): Promise<RecognitionResult> {
-    return { candidates: [] };
+    return { candidates: [], recognizedText: '', confidence: 0 };
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { CreateExpirationItem } from './expiration-item';
 import { ExpirationItemsService } from './expiration-items.service';
 
@@ -14,5 +14,11 @@ export class ExpirationItemsController {
   @Post()
   create(@Body() input: CreateExpirationItem) {
     return this.itemsService.create(input);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id') id: string) {
+    return this.itemsService.remove(id);
   }
 }

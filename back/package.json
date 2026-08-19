@@ -3,23 +3,33 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prebuild": "npm run prisma:generate",
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "start:dev": "node --env-file-if-exists=.env -r ts-node/register src/main.ts",
+    "pretypecheck": "npm run prisma:generate",
     "test:date-parser": "npm run build && node scripts/test-expiration-date-parser.cjs",
     "test:image-preprocessor": "npm run build && node scripts/test-image-preprocessor.cjs",
     "test:ocr": "npm run build && node scripts/test-ocr.cjs",
     "test:vision": "npm run build && node --env-file=.env scripts/test-google-vision-ocr.cjs",
     "test:vision-fixtures": "npm run build && node --env-file=.env scripts/test-google-vision-fixtures.cjs",
     "test:vision-response": "npm run build && node scripts/test-google-vision-response.cjs",
-    "typecheck": "tsc --noEmit"
+    "test:database": "npm run build && node --env-file=.env scripts/test-database-integration.cjs",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.1",
     "@nestjs/core": "^11.2.1",
     "@nestjs/platform-express": "^11.2.1",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/kor": "^1.0.0",
+    "dotenv": "^17.4.2",
+    "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "sharp": "^0.35.3",
@@ -27,6 +37,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "@types/pg": "^8.23.1",
+    "prisma": "^7.9.1",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2"
   }

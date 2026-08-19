@@ -148,7 +148,11 @@ export class TesseractExpirationRecognizer
       `OCR completed in ${Date.now() - startedAt}ms across ${regions.length} candidate region(s), found ${candidates.length} date candidate(s)`,
     );
 
-    return { candidates };
+    return {
+      candidates,
+      recognizedText: recognizedSegments.join('\n'),
+      confidence: Math.max(0, Math.min(1, bestConfidence / 100)),
+    };
   }
 
   private getEnglishWorker() {

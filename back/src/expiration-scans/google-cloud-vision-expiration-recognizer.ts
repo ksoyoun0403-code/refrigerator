@@ -112,7 +112,7 @@ export class GoogleCloudVisionExpirationRecognizer
       `Google Vision OCR completed in ${Date.now() - startedAt}ms, found ${candidates.length} date candidate(s)`,
     );
 
-    return { candidates };
+    return { candidates, recognizedText, confidence };
   }
 }
 

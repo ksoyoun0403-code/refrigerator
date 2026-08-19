@@ -1,31 +1,200 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { CreateExpirationItem, ExpirationItem } from './expiration-item';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
+import {
+  CreateExpirationItem,
+  EXPIRATION_ITEM_UNITS,
+  ExpirationItem,
+  ExpirationItemUnit,
+} from './expiration-item';
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const QUANTITY_PATTERN = /^\d{1,6}(?:\.\d{1,3})?$/;
+
+function isCalendarDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function toDatabaseDate(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function todayInSeoul() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function mapItem(item: {
+  id: string;
+  scanId: string;
+  name: string;
+  quantity: { toString(): string };
+  unit: string;
+  purchasedAt: Date;
+  expirationDate: Date | null;
+  section: string;
+  sortOrder: number;
+  createdAt: Date;
+}): ExpirationItem {
+  return {
+    id: item.id,
+    scanId: item.scanId,
+    name: item.name,
+    quantity: item.quantity.toString(),
+    unit: item.unit as ExpirationItemUnit,
+    purchasedAt: dateOnly(item.purchasedAt),
+    expirationDate: item.expirationDate ? dateOnly(item.expirationDate) : null,
+    source: 'image',
+    section: item.section as ExpirationItem['section'],
+    sortOrder: item.sortOrder,
+    createdAt: item.createdAt.toISOString(),
+  };
+}
 
 @Injectable()
 export class ExpirationItemsService {
-  // Persistence is intentionally behind this service so a DB repository can replace it.
-  private readonly items: ExpirationItem[] = [];
+  constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return [...this.items].sort((a, b) =>
-      a.expirationDate.localeCompare(b.expirationDate),
-    );
+  async findAll() {
+    const items = await this.prisma.client.expirationItem.findMany({
+      orderBy: [{ section: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+    return items.map(mapItem);
   }
 
-  create(input: CreateExpirationItem) {
-    if (!input.name?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(input.expirationDate)) {
-      throw new BadRequestException('이름과 YYYY-MM-DD 형식의 유통기한이 필요합니다.');
+  async create(input: CreateExpirationItem) {
+    const normalized = this.validate(input);
+
+    try {
+      const item = await this.prisma.client.$transaction(async (transaction) => {
+        const scan = await transaction.expirationScan.findUnique({
+          where: { id: normalized.scanId },
+        });
+        if (!scan) {
+          throw new NotFoundException('스캔 결과를 찾을 수 없습니다.');
+        }
+        if (scan.status !== 'NEEDS_REVIEW') {
+          throw new ConflictException('이미 등록했거나 등록할 수 없는 스캔입니다.');
+        }
+
+        const lastPosition = await transaction.expirationItem.aggregate({
+          where: { section: 'DEFAULT' },
+          _max: { sortOrder: true },
+        });
+        const claimed = await transaction.expirationScan.updateMany({
+          where: { id: scan.id, status: 'NEEDS_REVIEW' },
+          data: { status: 'CONFIRMED' },
+        });
+        if (claimed.count !== 1) {
+          throw new ConflictException('이미 등록된 스캔입니다.');
+        }
+
+        return transaction.expirationItem.create({
+          data: {
+            scanId: scan.id,
+            name: normalized.name,
+            quantity: normalized.quantity,
+            unit: normalized.unit,
+            purchasedAt: toDatabaseDate(normalized.purchasedAt),
+            expirationDate: normalized.expirationDate
+              ? toDatabaseDate(normalized.expirationDate)
+              : null,
+            source: 'IMAGE',
+            section: 'DEFAULT',
+            sortOrder: (lastPosition._max.sortOrder ?? -1) + 1,
+          },
+        });
+      });
+
+      return mapItem(item);
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('이미 등록된 스캔입니다.');
+      }
+      throw error;
+    }
+  }
+
+  async remove(id: string) {
+    if (!UUID_PATTERN.test(id)) {
+      throw new BadRequestException('유효한 식재료 ID가 필요합니다.');
     }
 
-    const item: ExpirationItem = {
-      id: randomUUID(),
-      name: input.name.trim(),
-      expirationDate: input.expirationDate,
-      source: input.source ?? 'image',
-      createdAt: new Date().toISOString(),
-    };
-    this.items.push(item);
-    return item;
+    await this.prisma.client.$transaction(async (transaction) => {
+      const item = await transaction.expirationItem.findUnique({
+        where: { id },
+        select: { id: true, scanId: true },
+      });
+      if (!item) {
+        throw new NotFoundException('삭제할 식재료를 찾을 수 없습니다.');
+      }
+
+      await transaction.expirationItem.delete({ where: { id: item.id } });
+      await transaction.expirationScan.delete({
+        where: { id: item.scanId },
+      });
+    });
+  }
+
+  private validate(input: CreateExpirationItem) {
+    const scanId = input.scanId?.trim();
+    const name = input.name?.trim();
+    const quantity = input.quantity?.trim();
+    const unit = input.unit;
+    const purchasedAt = input.purchasedAt?.trim() || todayInSeoul();
+    const expirationDate = input.expirationDate?.trim() || null;
+
+    if (!scanId || !UUID_PATTERN.test(scanId)) {
+      throw new BadRequestException('유효한 scanId가 필요합니다.');
+    }
+    if (!name || name.length > 100) {
+      throw new BadRequestException('식재료 이름은 1~100자로 입력해주세요.');
+    }
+    if (
+      !quantity ||
+      !QUANTITY_PATTERN.test(quantity) ||
+      Number(quantity) <= 0 ||
+      Number(quantity) > 999999
+    ) {
+      throw new BadRequestException(
+        '수량은 0보다 크고 소수점 셋째 자리까지 입력할 수 있습니다.',
+      );
+    }
+    if (!EXPIRATION_ITEM_UNITS.includes(unit)) {
+      throw new BadRequestException('지원하는 수량 단위를 선택해주세요.');
+    }
+    if (!isCalendarDate(purchasedAt)) {
+      throw new BadRequestException('구매일은 YYYY-MM-DD 형식이어야 합니다.');
+    }
+    if (expirationDate && !isCalendarDate(expirationDate)) {
+      throw new BadRequestException('유통기한은 YYYY-MM-DD 형식이어야 합니다.');
+    }
+
+    return { scanId, name, quantity, unit, purchasedAt, expirationDate };
   }
 }

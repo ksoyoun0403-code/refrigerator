@@ -1,0 +1,69 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ExpirationScanStatus {
+  PROCESSING
+  NEEDS_REVIEW
+  CONFIRMED
+  FAILED
+}
+
+enum ExpirationItemUnit {
+  COUNT
+  G
+  KG
+  ML
+  L
+  PACK
+  BAG
+  BOTTLE
+  CAN
+}
+
+enum ExpirationItemSource {
+  IMAGE
+  MANUAL
+}
+
+enum ExpirationItemSection {
+  DEFAULT
+  USE_SOON
+}
+
+model ExpirationScan {
+  id                       String               @id @default(uuid()) @db.Uuid
+  status                   ExpirationScanStatus @default(PROCESSING)
+  recognizedExpirationDate DateTime?            @db.Date
+  confidence               Decimal?             @db.Decimal(5, 4)
+  item                     ExpirationItem?
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+
+  @@map("expiration_scans")
+}
+
+model ExpirationItem {
+  id             String                @id @default(uuid()) @db.Uuid
+  scanId         String                @unique @db.Uuid
+  scan           ExpirationScan        @relation(fields: [scanId], references: [id])
+  name           String                @db.VarChar(100)
+  quantity       Decimal               @db.Decimal(9, 3)
+  unit           ExpirationItemUnit
+  purchasedAt    DateTime              @db.Date
+  expirationDate DateTime?             @db.Date
+  source         ExpirationItemSource  @default(IMAGE)
+  section        ExpirationItemSection @default(DEFAULT)
+  sortOrder      Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([section, sortOrder])
+  @@map("expiration_items")
+}

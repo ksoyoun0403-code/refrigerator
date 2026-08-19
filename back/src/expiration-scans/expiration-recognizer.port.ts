@@ -7,6 +7,8 @@ export type ExpirationCandidate = {
 
 export type RecognitionResult = {
   candidates: ExpirationCandidate[];
+  recognizedText: string;
+  confidence: number;
 };
 
 export type ImageInput = {
