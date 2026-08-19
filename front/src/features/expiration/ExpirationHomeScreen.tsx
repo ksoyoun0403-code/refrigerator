@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { getExpirationItems } from './expirationApi';
+import { ExpirationImageScanner } from './ExpirationImageScanner';
 import { ExpirationItem } from './types';
 
 export function ExpirationHomeScreen() {
@@ -33,13 +33,6 @@ export function ExpirationHomeScreen() {
     void loadItems();
   }, [loadItems]);
 
-  const startScan = () => {
-    Alert.alert(
-      '이미지 선택 연결 지점',
-      '다음 구현 단계에서 카메라·앨범 선택 후 인식 결과 확인 화면으로 이어집니다.',
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -49,13 +42,7 @@ export function ExpirationHomeScreen() {
           식품 사진을 인식한 뒤 날짜를 확인하고 냉장고 목록에 저장합니다.
         </Text>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={startScan}
-          style={({ pressed }) => [styles.scanButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.scanButtonText}>사진으로 추가</Text>
-        </Pressable>
+        <ExpirationImageScanner />
 
         <View style={styles.flowCard}>
           <Text style={styles.sectionTitle}>핵심 구현 순서</Text>
@@ -102,9 +89,6 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#2f6b45', fontSize: 13, fontWeight: '800', letterSpacing: 1.6, marginTop: 20 },
   title: { color: '#193426', fontSize: 34, fontWeight: '800', lineHeight: 43, marginTop: 10 },
   description: { color: '#5d685f', fontSize: 16, lineHeight: 24, marginTop: 10 },
-  scanButton: { alignItems: 'center', backgroundColor: '#2f6b45', borderRadius: 16, marginTop: 26, padding: 17 },
-  pressed: { opacity: 0.8 },
-  scanButtonText: { color: '#ffffff', fontSize: 17, fontWeight: '700' },
   flowCard: { backgroundColor: '#edf4ed', borderRadius: 18, gap: 8, marginTop: 28, padding: 20 },
   sectionTitle: { color: '#253b2e', fontSize: 19, fontWeight: '700' },
   flowText: { color: '#526158', fontSize: 15 },

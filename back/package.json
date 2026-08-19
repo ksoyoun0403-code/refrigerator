@@ -4,16 +4,26 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/main.js",
-    "start:dev": "ts-node src/main.ts",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "start:dev": "node --env-file-if-exists=.env -r ts-node/register src/main.ts",
+    "test:date-parser": "npm run build && node scripts/test-expiration-date-parser.cjs",
+    "test:image-preprocessor": "npm run build && node scripts/test-image-preprocessor.cjs",
+    "test:ocr": "npm run build && node scripts/test-ocr.cjs",
+    "test:vision": "npm run build && node --env-file=.env scripts/test-google-vision-ocr.cjs",
+    "test:vision-fixtures": "npm run build && node --env-file=.env scripts/test-google-vision-fixtures.cjs",
+    "test:vision-response": "npm run build && node scripts/test-google-vision-response.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.1",
     "@nestjs/core": "^11.2.1",
     "@nestjs/platform-express": "^11.2.1",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/kor": "^1.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "sharp": "^0.35.3",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

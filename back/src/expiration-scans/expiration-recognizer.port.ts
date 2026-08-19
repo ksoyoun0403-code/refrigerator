@@ -1,7 +1,8 @@
 export type ExpirationCandidate = {
-  name: string;
-  expirationDate: string | null;
+  rawText: string;
+  expirationDate: string;
   confidence: number;
+  requiresConfirmation: boolean;
 };
 
 export type RecognitionResult = {

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ExpirationScansController } from './expiration-scans.controller';
 import { ExpirationScansService } from './expiration-scans.service';
 import { EXPIRATION_RECOGNIZER } from './expiration-recognizer.port';
-import { PlaceholderExpirationRecognizer } from './placeholder-expiration-recognizer';
+import { GoogleCloudVisionExpirationRecognizer } from './google-cloud-vision-expiration-recognizer';
 
 @Module({
   controllers: [ExpirationScansController],
@@ -10,7 +10,7 @@ import { PlaceholderExpirationRecognizer } from './placeholder-expiration-recogn
     ExpirationScansService,
     {
       provide: EXPIRATION_RECOGNIZER,
-      useClass: PlaceholderExpirationRecognizer,
+      useClass: GoogleCloudVisionExpirationRecognizer,
     },
   ],
 })
