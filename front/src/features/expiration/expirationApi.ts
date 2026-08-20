@@ -9,7 +9,7 @@ import {
 } from './types';
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/v1';
+  process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:3000/v1';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;

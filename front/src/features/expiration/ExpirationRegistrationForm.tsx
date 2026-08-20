@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { Button } from '../../design-system/Button';
+import { colors, interaction, radii, spacing, typography } from '../../design-system/tokens';
 import { createExpirationItem, updateExpirationItem } from './expirationApi';
 import {
   EXPIRATION_ITEM_UNITS,
@@ -116,12 +117,12 @@ export function ExpirationRegistrationForm(props: Props) {
   return (
     <View style={styles.formCard}>
       <Text style={styles.title}>
-        {editingItem ? '식재료 정보 수정' : '인식 결과 확인 및 등록'}
+        {editingItem ? '??? ?? ??' : '?? ?? ?? ? ??'}
       </Text>
       <Text style={styles.helper}>
         {editingItem
-          ? '저장하면 냉장고 목록에 바로 반영됩니다.'
-          : '구매일은 등록하는 오늘 날짜로 자동 저장됩니다.'}
+          ? '???? ??? ??? ?? ????.'
+          : '???? ?? ??? ?? ????.'}
       </Text>
 
       <Text style={styles.label}>식재료 이름</Text>
@@ -130,6 +131,8 @@ export function ExpirationRegistrationForm(props: Props) {
         maxLength={100}
         onChangeText={setName}
         placeholder="예: 우유"
+        placeholderTextColor={colors.text.muted}
+        selectionColor={colors.brand.primary}
         style={styles.input}
         value={name}
       />
@@ -141,6 +144,7 @@ export function ExpirationRegistrationForm(props: Props) {
           keyboardType="decimal-pad"
           maxLength={10}
           onChangeText={setQuantity}
+          selectionColor={colors.brand.primary}
           style={[styles.input, styles.quantityInput]}
           value={quantity}
         />
@@ -199,6 +203,8 @@ export function ExpirationRegistrationForm(props: Props) {
         maxLength={10}
         onChangeText={setExpirationDate}
         placeholder="YYYY-MM-DD 또는 비워두기"
+        placeholderTextColor={colors.text.muted}
+        selectionColor={colors.brand.primary}
         style={styles.input}
         value={expirationDate}
       />
@@ -211,6 +217,8 @@ export function ExpirationRegistrationForm(props: Props) {
             maxLength={10}
             onChangeText={setPurchasedAt}
             placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.text.muted}
+            selectionColor={colors.brand.primary}
             style={styles.input}
             value={purchasedAt}
           />
@@ -220,64 +228,53 @@ export function ExpirationRegistrationForm(props: Props) {
       {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
       <View style={editingItem ? styles.editActions : undefined}>
         {editingItem && (
-          <Pressable
+          <Button
             disabled={isSaving}
+            label="취소"
             onPress={props.onCancel}
             style={styles.cancelButton}
-          >
-            <Text style={styles.cancelButtonText}>취소</Text>
-          </Pressable>
+            variant="secondary"
+          />
         )}
-        <Pressable
-          accessibilityRole="button"
+        <Button
           disabled={isSaving}
+          label={editingItem ? '수정 내용 저장' : '냉장고에 등록'}
+          loading={isSaving}
           onPress={() => void save()}
           style={[
             styles.saveButton,
             editingItem && styles.editSaveButton,
-            isSaving && styles.disabled,
           ]}
-        >
-          {isSaving ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.saveButtonText}>
-              {editingItem ? '수정 내용 저장' : '냉장고에 등록'}
-            </Text>
-          )}
-        </Pressable>
+        />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  formCard: { backgroundColor: '#ffffff', borderColor: '#dfe8df', borderRadius: 18, borderWidth: 1, marginTop: 16, padding: 18 },
-  title: { color: '#253b2e', fontSize: 18, fontWeight: '800' },
-  helper: { color: '#67746b', fontSize: 13, lineHeight: 19, marginTop: 5 },
-  label: { color: '#34463a', fontSize: 14, fontWeight: '700', marginBottom: 7, marginTop: 17 },
-  input: { backgroundColor: '#faf9f6', borderColor: '#d8ddd8', borderRadius: 12, borderWidth: 1, color: '#203027', fontSize: 16, paddingHorizontal: 14, paddingVertical: 12 },
-  quantityRow: { flexDirection: 'row', gap: 10 },
+  formCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, marginTop: spacing.lg, padding: spacing.xl },
+  title: { color: colors.text.primary, ...typography.title, fontWeight: '800' },
+  helper: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },
+  label: { color: colors.text.primary, ...typography.label, marginBottom: spacing.sm, marginTop: spacing.lg },
+  input: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, color: colors.text.primary, fontSize: typography.body.fontSize, minHeight: 48, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  quantityRow: { flexDirection: 'row', gap: spacing.sm },
   quantityInput: { flex: 1 },
-  unitButton: { alignItems: 'center', backgroundColor: '#edf4ed', borderRadius: 12, justifyContent: 'center', minWidth: 86, paddingHorizontal: 14 },
-  unitButtonText: { color: '#2f6b45', fontSize: 16, fontWeight: '800' },
-  unitOptions: { backgroundColor: '#ffffff', borderColor: '#d8ddd8', borderRadius: 12, borderWidth: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, padding: 10 },
-  unitOption: { backgroundColor: '#f3f3f0', borderRadius: 9, minWidth: 48, paddingHorizontal: 10, paddingVertical: 9 },
-  unitOptionSelected: { backgroundColor: '#2f6b45' },
-  unitText: { color: '#465249', fontWeight: '700', textAlign: 'center' },
-  unitSelectedText: { color: '#ffffff', fontWeight: '700', textAlign: 'center' },
+  unitButton: { alignItems: 'center', backgroundColor: colors.brand.soft, borderRadius: radii.medium, justifyContent: 'center', minHeight: 48, minWidth: 86, paddingHorizontal: spacing.md },
+  unitButtonText: { color: colors.brand.action, ...typography.bodyStrong, fontWeight: '800' },
+  unitOptions: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm, padding: spacing.sm },
+  unitOption: { backgroundColor: colors.surfaceMuted, borderRadius: radii.small, minHeight: interaction.minimumTouchSize, minWidth: 48, paddingHorizontal: spacing.sm, paddingVertical: spacing.md },
+  unitOptionSelected: { backgroundColor: colors.brand.action },
+  unitText: { color: colors.text.secondary, fontWeight: '700', textAlign: 'center' },
+  unitSelectedText: { color: colors.text.inverse, fontWeight: '700', textAlign: 'center' },
   labelRow: { alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between' },
-  clearAction: { color: '#2f6b45', fontSize: 13, fontWeight: '700', marginBottom: 7 },
-  candidates: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 9 },
-  dateCandidate: { backgroundColor: '#f3f3f0', borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8 },
-  dateCandidateSelected: { backgroundColor: '#dcecdc' },
-  dateCandidateText: { color: '#36513f', fontSize: 13, fontWeight: '700' },
-  error: { color: '#9b4037', fontSize: 14, lineHeight: 20, marginTop: 12 },
-  saveButton: { alignItems: 'center', backgroundColor: '#2f6b45', borderRadius: 14, marginTop: 18, padding: 15 },
-  editActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  clearAction: { color: colors.brand.action, ...typography.caption, fontWeight: '700', marginBottom: spacing.sm, minHeight: interaction.minimumTouchSize },
+  candidates: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
+  dateCandidate: { backgroundColor: colors.surfaceMuted, borderColor: 'transparent', borderRadius: radii.small, borderWidth: 1, minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  dateCandidateSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary },
+  dateCandidateText: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
+  error: { color: colors.danger, ...typography.label, marginTop: spacing.md },
+  saveButton: { marginTop: spacing.xl },
+  editActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
   editSaveButton: { flex: 1, marginTop: 0 },
-  cancelButton: { alignItems: 'center', borderColor: '#b8c4ba', borderRadius: 14, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 22 },
-  cancelButtonText: { color: '#536159', fontSize: 16, fontWeight: '800' },
-  saveButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
-  disabled: { opacity: 0.65 },
+  cancelButton: { flex: 1 },
 });

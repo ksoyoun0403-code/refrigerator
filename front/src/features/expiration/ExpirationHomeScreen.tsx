@@ -9,6 +9,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Button } from '../../design-system/Button';
+import { colors, interaction, radii, spacing, typography } from '../../design-system/tokens';
 import {
   deleteExpirationItem,
   getExpirationItems,
@@ -18,9 +20,11 @@ import { ExpirationImageScanner } from './ExpirationImageScanner';
 import { ExpirationRegistrationForm } from './ExpirationRegistrationForm';
 import { ExpirationItem } from './types';
 
-const UNIT_LABELS: Record<ExpirationItem['unit'], string> = {
-  COUNT: '개', G: 'g', KG: 'kg', ML: 'ml', L: 'L', PACK: '팩',
-  BAG: '봉', BOTTLE: '병', CAN: '캔',
+type ManageMode = 'idle' | 'editing' | 'deleting';
+
+type PreviousPlacement = {
+  id: string;
+  section: ExpirationItem['section'];
 };
 
 export function ExpirationHomeScreen() {
@@ -29,7 +33,10 @@ export function ExpirationHomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [deletingId, setDeletingId] = useState<string>();
-  const [movingId, setMovingId] = useState<string>();
+  const [manageMode, setManageMode] = useState<ManageMode>('idle');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isMovingSelection, setIsMovingSelection] = useState(false);
+  const [previousPlacement, setPreviousPlacement] = useState<PreviousPlacement[]>();
 
   const loadItems = useCallback(async () => {
     setIsLoading(true);
@@ -45,12 +52,28 @@ export function ExpirationHomeScreen() {
 
   useEffect(() => { void loadItems(); }, [loadItems]);
 
+  useEffect(() => {
+    if (!previousPlacement) return;
+    const timer = setTimeout(() => setPreviousPlacement(undefined), 5000);
+    return () => clearTimeout(timer);
+  }, [previousPlacement]);
+
+  const itemRegistered = async (item: ExpirationItem) => {
+    setItems((current) => sortItemsForDisplay([...current, item]));
+    await loadItems();
+  };
+
   const removeItem = async (item: ExpirationItem) => {
     if (deletingId) return;
     setDeletingId(item.id);
     try {
       await deleteExpirationItem(item.id);
       setItems((current) => current.filter(({ id }) => id !== item.id));
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        return next;
+      });
     } catch (error) {
       Alert.alert(
         '삭제하지 못했어요',
@@ -72,45 +95,114 @@ export function ExpirationHomeScreen() {
     );
   };
 
-  const moveItem = async (item: ExpirationItem) => {
-    if (movingId) return;
-    const section = item.section === 'DEFAULT' ? 'USE_SOON' : 'DEFAULT';
-    setMovingId(item.id);
-    setItems((current) => {
-      const lastUseSoonOrder = current
-        .filter(({ section: currentSection }) => currentSection === 'USE_SOON')
-        .reduce((maximum, currentItem) => Math.max(maximum, currentItem.sortOrder), -1);
-      return sortItemsForDisplay(
-        current.map((currentItem) =>
-          currentItem.id === item.id
-            ? {
-                ...currentItem,
-                section,
-                sortOrder: section === 'USE_SOON'
-                  ? lastUseSoonOrder + 1
-                  : currentItem.sortOrder,
-              }
-            : currentItem,
-        ),
-      );
+  const enterManageMode = (mode: Exclude<ManageMode, 'idle'>) => {
+    setManageMode(mode);
+    setSelectedIds(new Set());
+    setPreviousPlacement(undefined);
+  };
+
+  const exitManageMode = () => {
+    if (isMovingSelection || deletingId) return;
+    setManageMode('idle');
+    setSelectedIds(new Set());
+    setPreviousPlacement(undefined);
+  };
+
+  const toggleSelection = (item: ExpirationItem) => {
+    if (isMovingSelection) return;
+    if (!selectedIds.has(item.id)) {
+      const firstSelectedItem = items.find(({ id }) => selectedIds.has(id));
+      if (firstSelectedItem && firstSelectedItem.section !== item.section) {
+        Alert.alert(
+          '같은 영역의 재료만 선택할 수 있어요',
+          '현재 선택을 취소한 뒤 다른 영역의 재료를 선택해주세요.',
+        );
+        return;
+      }
+    }
+    setPreviousPlacement(undefined);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
     });
-    try {
-      const updatedItem = await updateExpirationItem(item.id, { section });
-      setItems((current) => sortItemsForDisplay(
-        current.map((currentItem) =>
-          currentItem.id === updatedItem.id ? updatedItem : currentItem,
-        ),
-      ));
-    } catch (error) {
-      setItems((current) => sortItemsForDisplay(
-        current.map((currentItem) => currentItem.id === item.id ? item : currentItem),
-      ));
+  };
+
+  const clearSelection = () => {
+    if (isMovingSelection) return;
+    setSelectedIds(new Set());
+    setPreviousPlacement(undefined);
+  };
+
+  const moveSelection = async (section: ExpirationItem['section']) => {
+    if (isMovingSelection || selectedIds.size === 0) return;
+    const movingItems = items.filter(
+      (item) => selectedIds.has(item.id) && item.section !== section,
+    );
+    if (movingItems.length === 0) {
+      Alert.alert('이동할 재료가 없어요', '선택한 재료가 이미 해당 영역에 있습니다.');
+      return;
+    }
+
+    setIsMovingSelection(true);
+    const updatedItems: ExpirationItem[] = [];
+    const failedItems: ExpirationItem[] = [];
+    for (const item of movingItems) {
+      try {
+        updatedItems.push(await updateExpirationItem(item.id, { section }));
+      } catch {
+        failedItems.push(item);
+      }
+    }
+
+    const updatedById = new Map(updatedItems.map((item) => [item.id, item]));
+    setItems((current) => sortItemsForDisplay(
+      current.map((item) => updatedById.get(item.id) ?? item),
+    ));
+    setSelectedIds(new Set(failedItems.map((item) => item.id)));
+    setPreviousPlacement(
+      updatedItems.length > 0
+        ? updatedItems.map((item) => ({
+            id: item.id,
+            section: movingItems.find(({ id }) => id === item.id)!.section,
+          }))
+        : undefined,
+    );
+    setIsMovingSelection(false);
+
+    if (failedItems.length > 0) {
       Alert.alert(
-        '이동하지 못했어요',
-        error instanceof Error ? error.message : '잠시 후 다시 시도해주세요.',
+        '일부 재료를 이동하지 못했어요',
+        `${updatedItems.length}개는 이동했고 ${failedItems.length}개는 이동하지 못했습니다. 다시 시도해주세요.`,
       );
-    } finally {
-      setMovingId(undefined);
+    }
+  };
+
+  const undoMove = async () => {
+    if (!previousPlacement || isMovingSelection) return;
+    const placement = previousPlacement;
+    setPreviousPlacement(undefined);
+    setIsMovingSelection(true);
+    const restoredItems: ExpirationItem[] = [];
+    let failureCount = 0;
+    for (const previous of placement) {
+      try {
+        restoredItems.push(
+          await updateExpirationItem(previous.id, { section: previous.section }),
+        );
+      } catch {
+        failureCount += 1;
+      }
+    }
+    const restoredById = new Map(restoredItems.map((item) => [item.id, item]));
+    setItems((current) => sortItemsForDisplay(
+      current.map((item) => restoredById.get(item.id) ?? item),
+    ));
+    setIsMovingSelection(false);
+    if (failureCount > 0) {
+      Alert.alert('일부 이동을 되돌리지 못했어요', '목록을 새로 불러와 상태를 확인해주세요.');
+      await loadItems();
     }
   };
 
@@ -141,36 +233,70 @@ export function ExpirationHomeScreen() {
 
   const useSoonItems = items.filter((item) => item.section === 'USE_SOON');
   const defaultItems = items.filter((item) => item.section === 'DEFAULT');
+  const selectedSection = items.find((item) => selectedIds.has(item.id))?.section;
+  const targetSection = selectedSection === 'DEFAULT' ? 'USE_SOON' : 'DEFAULT';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[
+          styles.container,
+          manageMode === 'editing' && styles.containerWithSelectionBar,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.eyebrow}>MYDISH</Text>
         <Text style={styles.title}>유통기한을 사진 한 장으로</Text>
         <Text style={styles.description}>
-          식품 사진을 인식하고 정보를 확인한 뒤 냉장고 목록에 저장합니다.
+          ??? ??? ?? ??? ??? ? ??? ??? ?? ??? ? ???.
         </Text>
 
-        <ExpirationImageScanner onRegistered={loadItems} />
+        <ExpirationImageScanner onRegistered={itemRegistered} />
 
         <View style={styles.listHeader}>
           <Text style={styles.sectionTitle}>냉장고 목록</Text>
-          {loadFailed && (
-            <Pressable onPress={() => void loadItems()}>
-              <Text style={styles.retry}>다시 불러오기</Text>
+          {manageMode === 'idle' ? (
+            <View style={styles.manageActions}>
+              {loadFailed && (
+                <Pressable onPress={() => void loadItems()}>
+                  <Text style={styles.retry}>다시 불러오기</Text>
+                </Pressable>
+              )}
+              {items.length > 0 && (
+                <>
+                  <Pressable onPress={() => enterManageMode('editing')} style={styles.manageButton}>
+                    <Text style={styles.manageButtonText}>편집</Text>
+                  </Pressable>
+                  <Pressable onPress={() => enterManageMode('deleting')} style={styles.deleteModeButton}>
+                    <Text style={styles.deleteModeButtonText}>삭제</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          ) : (
+            <Pressable disabled={isMovingSelection || Boolean(deletingId)} onPress={exitManageMode}>
+              <Text style={styles.doneAction}>완료</Text>
             </Pressable>
           )}
         </View>
 
+        {manageMode === 'editing' && (
+          <Text style={styles.modeDescription}>
+            옮길 재료를 선택한 뒤 이동할 영역을 눌러주세요.
+          </Text>
+        )}
+        {manageMode === 'deleting' && (
+          <Text style={styles.modeDescription}>
+            카드 오른쪽 위의 ×를 누르면 재료를 삭제할 수 있어요.
+          </Text>
+        )}
+
         {isLoading ? (
-          <ActivityIndicator color="#2f6b45" />
+          <ActivityIndicator color={colors.brand.action} />
         ) : items.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>아직 등록한 식품이 없어요</Text>
-            <Text style={styles.emptyDescription}>첫 번째 식품 사진을 등록해보세요.</Text>
+            <Text style={styles.emptyDescription}>? ?? ??? ??? ??? ??????.</Text>
           </View>
         ) : (
           <View style={styles.itemGroups}>
@@ -180,10 +306,11 @@ export function ExpirationHomeScreen() {
                 <ItemGroup
                   deletingId={deletingId}
                   items={useSoonItems}
-                  movingId={movingId}
+                  manageMode={manageMode}
                   onDelete={confirmDelete}
                   onEdit={setSelectedItem}
-                  onMove={moveItem}
+                  onSelect={toggleSelection}
+                  selectedIds={selectedIds}
                 />
               ) : (
                 <View style={styles.emptyDropZone}>
@@ -198,16 +325,52 @@ export function ExpirationHomeScreen() {
                 <ItemGroup
                   deletingId={deletingId}
                   items={defaultItems}
-                  movingId={movingId}
+                  manageMode={manageMode}
                   onDelete={confirmDelete}
                   onEdit={setSelectedItem}
-                  onMove={moveItem}
+                  onSelect={toggleSelection}
+                  selectedIds={selectedIds}
                 />
               </View>
             )}
           </View>
         )}
       </ScrollView>
+
+      {manageMode === 'editing' && (
+        <View style={styles.selectionBar}>
+          {previousPlacement && previousPlacement.length > 0 ? (
+            <View style={styles.undoRow}>
+              <Text style={styles.undoMessage}>{previousPlacement.length}개 재료를 이동했어요.</Text>
+              <Pressable disabled={isMovingSelection} onPress={() => void undoMove()}>
+                <Text style={styles.undoAction}>되돌리기</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.selectionCount}>선택 {selectedIds.size}개</Text>
+          )}
+          {selectedSection && (
+            <View style={styles.placementActions}>
+              <Button
+                disabled={isMovingSelection}
+                label="선택 취소"
+                onPress={clearSelection}
+                style={styles.cancelSelectionButton}
+                variant="secondary"
+              />
+              <Button
+                disabled={isMovingSelection}
+                label={targetSection === 'USE_SOON'
+                  ? '사용 임박으로 이동'
+                  : '일반 냉장고로 이동'}
+                loading={isMovingSelection}
+                onPress={() => void moveSelection(targetSection)}
+                style={styles.placementButton}
+              />
+            </View>
+          )}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -215,97 +378,102 @@ export function ExpirationHomeScreen() {
 function ItemGroup({
   deletingId,
   items,
-  movingId,
+  manageMode,
   onDelete,
   onEdit,
-  onMove,
+  onSelect,
+  selectedIds,
 }: {
   deletingId?: string;
   items: ExpirationItem[];
-  movingId?: string;
+  manageMode: ManageMode;
   onDelete(item: ExpirationItem): void;
   onEdit(item: ExpirationItem): void;
-  onMove(item: ExpirationItem): void;
+  onSelect(item: ExpirationItem): void;
+  selectedIds: Set<string>;
 }) {
   return (
-    <View style={styles.groupCard}>
+    <View style={styles.cardGrid}>
       {items.map((item) => (
-        <ItemRow
+        <ItemCard
           deleting={deletingId === item.id}
           item={item}
           key={item.id}
-          moving={movingId === item.id}
+          manageMode={manageMode}
           onDelete={() => onDelete(item)}
           onEdit={() => onEdit(item)}
-          onMove={() => onMove(item)}
+          onSelect={() => onSelect(item)}
+          selected={selectedIds.has(item.id)}
         />
       ))}
     </View>
   );
 }
 
-function ItemRow({
+function ItemCard({
   deleting,
   item,
-  moving,
+  manageMode,
   onDelete,
   onEdit,
-  onMove,
+  onSelect,
+  selected,
 }: {
   deleting: boolean;
   item: ExpirationItem;
-  moving: boolean;
+  manageMode: ManageMode;
   onDelete(): void;
   onEdit(): void;
-  onMove(): void;
+  onSelect(): void;
+  selected: boolean;
 }) {
+  const onPress = manageMode === 'editing' ? onSelect : manageMode === 'idle' ? onEdit : undefined;
+
   return (
-    <View style={styles.itemRow}>
-      <Pressable
-        accessibilityHint="식재료 정보를 수정합니다"
-        accessibilityRole="button"
-        disabled={deleting || moving}
-        onPress={onEdit}
-        style={styles.itemSummary}
-      >
-        <Text style={styles.itemName}>{item.name}</Text>
-        <Text style={styles.itemQuantity}>
-          {item.quantity}{UNIT_LABELS[item.unit]} · 구매 {item.purchasedAt}
-        </Text>
-      </Pressable>
-      <View style={styles.itemActions}>
-        <Text style={styles.itemDate}>
-          {item.expirationDate ?? '유통기한 없음'}
-        </Text>
-        <View style={styles.rowActions}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={deleting || moving}
-            onPress={onMove}
-            style={styles.moveButton}
-          >
-            {moving ? (
-              <ActivityIndicator color="#2f6b45" size="small" />
-            ) : (
-              <Text style={styles.moveAction}>
-                {item.section === 'DEFAULT' ? '사용 임박' : '일반으로'}
-              </Text>
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={deleting || moving}
-            onPress={onDelete}
-          >
-            {deleting ? (
-              <ActivityIndicator color="#a54d42" size="small" />
-            ) : (
-              <Text style={styles.deleteAction}>삭제</Text>
-            )}
-          </Pressable>
+    <Pressable
+      accessibilityHint={
+        manageMode === 'editing'
+          ? '이동할 식재료로 선택합니다'
+          : manageMode === 'idle'
+            ? '식재료 정보를 수정합니다'
+            : undefined
+      }
+      accessibilityRole="button"
+      accessibilityState={{ selected: manageMode === 'editing' ? selected : undefined }}
+      disabled={deleting}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.itemCard,
+        selected && styles.itemCardSelected,
+        pressed && styles.itemCardPressed,
+      ]}
+    >
+      {manageMode === 'editing' && (
+        <View style={[styles.selectionIndicator, selected && styles.selectionIndicatorSelected]}>
+          {selected && <Text style={styles.selectionCheck}>✓</Text>}
         </View>
-      </View>
-    </View>
+      )}
+      {manageMode === 'deleting' && (
+        <Pressable
+          accessibilityLabel={`${item.name} 삭제`}
+          accessibilityRole="button"
+          disabled={deleting}
+          hitSlop={8}
+          onPress={onDelete}
+          style={styles.cardDeleteButton}
+        >
+          {deleting ? (
+            <ActivityIndicator color={colors.danger} size="small" />
+          ) : (
+            <Text style={styles.cardDeleteText}>×</Text>
+          )}
+        </Pressable>
+      )}
+      <Text numberOfLines={2} style={styles.itemName}>{item.name}</Text>
+      <Text style={[styles.itemDate, !item.expirationDate && styles.missingDate]}>
+        {item.expirationDate?.replaceAll('-', '.') ?? '기한 미입력'}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -313,9 +481,6 @@ function sortItemsForDisplay(items: ExpirationItem[]) {
   return [...items].sort((left, right) => {
     if (left.section !== right.section) {
       return left.section === 'USE_SOON' ? -1 : 1;
-    }
-    if (left.section === 'USE_SOON') {
-      return left.sortOrder - right.sortOrder || left.createdAt.localeCompare(right.createdAt);
     }
     if (left.expirationDate !== right.expirationDate) {
       if (!left.expirationDate) return 1;
@@ -328,32 +493,49 @@ function sortItemsForDisplay(items: ExpirationItem[]) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: '#fffaf2', flex: 1 },
-  container: { padding: 24, paddingBottom: 48 },
-  editContainer: { padding: 24, paddingBottom: 48 },
-  eyebrow: { color: '#2f6b45', fontSize: 13, fontWeight: '800', letterSpacing: 1.6, marginTop: 20 },
-  title: { color: '#193426', fontSize: 34, fontWeight: '800', lineHeight: 43, marginTop: 10 },
-  editPageTitle: { color: '#193426', fontSize: 30, fontWeight: '800', marginTop: 10 },
-  description: { color: '#5d685f', fontSize: 16, lineHeight: 24, marginTop: 10 },
-  listHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, marginTop: 30 },
-  sectionTitle: { color: '#253b2e', fontSize: 19, fontWeight: '700' },
-  retry: { color: '#2f6b45', fontSize: 14, fontWeight: '700' },
-  emptyCard: { alignItems: 'center', backgroundColor: '#ffffff', borderColor: '#e7e1d7', borderRadius: 18, borderWidth: 1, padding: 28 },
-  emptyTitle: { color: '#34443a', fontSize: 16, fontWeight: '700' },
-  emptyDescription: { color: '#7b837e', fontSize: 14, marginTop: 7, textAlign: 'center' },
-  itemGroups: { gap: 24 },
-  groupTitle: { color: '#496052', fontSize: 15, fontWeight: '800', marginBottom: 5 },
-  emptyDropZone: { alignItems: 'center', backgroundColor: '#f7f8f4', borderColor: '#d8e1d7', borderRadius: 14, borderStyle: 'dashed', borderWidth: 1, padding: 20 },
-  emptyDropText: { color: '#78847b', fontSize: 13, fontWeight: '600' },
-  groupCard: { borderColor: '#e7e1d7', borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
-  itemRow: { alignItems: 'center', backgroundColor: '#ffffff', borderBottomColor: '#ede7de', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 18 },
-  itemSummary: { flex: 1, paddingRight: 12 },
-  itemName: { color: '#26382e', fontSize: 16, fontWeight: '700' },
-  itemQuantity: { color: '#7a827d', fontSize: 12, marginTop: 5 },
-  itemDate: { color: '#516157', fontSize: 14, fontWeight: '600' },
-  itemActions: { alignItems: 'flex-end', gap: 9 },
-  rowActions: { alignItems: 'center', flexDirection: 'row', gap: 12 },
-  moveButton: { backgroundColor: '#edf4ed', borderRadius: 9, minWidth: 72, paddingHorizontal: 9, paddingVertical: 7 },
-  moveAction: { color: '#2f6b45', fontSize: 12, fontWeight: '800', textAlign: 'center' },
-  deleteAction: { color: '#a54d42', fontSize: 13, fontWeight: '800' },
+  safeArea: { backgroundColor: colors.canvas, flex: 1 },
+  container: { padding: spacing.xxl, paddingBottom: spacing.giant },
+  containerWithSelectionBar: { paddingBottom: 160 },
+  editContainer: { padding: spacing.xxl, paddingBottom: spacing.giant },
+  eyebrow: { color: colors.brand.action, ...typography.caption, fontWeight: '800', letterSpacing: 1.6, marginTop: spacing.xl },
+  title: { color: colors.text.primary, ...typography.display, marginTop: spacing.sm },
+  editPageTitle: { color: colors.text.primary, ...typography.heading1, marginTop: spacing.sm },
+  description: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
+  listHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md, marginTop: spacing.xxxl },
+  sectionTitle: { color: colors.text.primary, ...typography.heading2 },
+  retry: { color: colors.brand.action, ...typography.label, minHeight: interaction.minimumTouchSize, paddingVertical: spacing.md },
+  manageActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  manageButton: { alignItems: 'center', backgroundColor: colors.brand.soft, borderRadius: radii.medium, justifyContent: 'center', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md },
+  manageButtonText: { color: colors.brand.action, ...typography.caption, fontWeight: '800' },
+  deleteModeButton: { alignItems: 'center', backgroundColor: colors.dangerSoft, borderRadius: radii.medium, justifyContent: 'center', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md },
+  deleteModeButtonText: { color: colors.danger, ...typography.caption, fontWeight: '800' },
+  doneAction: { color: colors.brand.action, ...typography.label, fontWeight: '800', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.xs, paddingVertical: spacing.md },
+  modeDescription: { color: colors.text.muted, ...typography.caption, marginBottom: spacing.lg, marginTop: -spacing.xs },
+  emptyCard: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, padding: spacing.xxxl },
+  emptyTitle: { color: colors.text.primary, ...typography.bodyStrong },
+  emptyDescription: { color: colors.text.muted, ...typography.label, fontWeight: '400', marginTop: spacing.sm, textAlign: 'center' },
+  itemGroups: { gap: spacing.xxl },
+  groupTitle: { color: colors.text.secondary, ...typography.label, fontWeight: '800', marginBottom: spacing.xs },
+  emptyDropZone: { alignItems: 'center', backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong, borderRadius: radii.large, borderStyle: 'dashed', borderWidth: 1, padding: spacing.xl },
+  emptyDropText: { color: colors.text.muted, ...typography.caption, fontWeight: '600' },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  itemCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, justifyContent: 'space-between', minHeight: 108, padding: spacing.lg, width: '48%' },
+  itemCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 15 },
+  itemCardPressed: { opacity: interaction.pressedOpacity },
+  itemName: { color: colors.text.primary, fontSize: 16, fontWeight: '800', lineHeight: 22, paddingRight: spacing.xxl },
+  itemDate: { color: colors.text.secondary, ...typography.label, marginTop: spacing.lg },
+  missingDate: { color: colors.text.muted, fontWeight: '600' },
+  selectionIndicator: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1.5, height: 24, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 24 },
+  selectionIndicatorSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
+  selectionCheck: { color: colors.text.inverse, fontSize: 13, fontWeight: '900', lineHeight: 17 },
+  cardDeleteButton: { alignItems: 'center', backgroundColor: colors.dangerSoft, borderRadius: radii.full, height: interaction.minimumTouchSize, justifyContent: 'center', position: 'absolute', right: spacing.xs, top: spacing.xs, width: interaction.minimumTouchSize, zIndex: 1 },
+  cardDeleteText: { color: colors.danger, fontSize: 24, fontWeight: '600', lineHeight: 26 },
+  selectionBar: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, paddingHorizontal: spacing.xxl, paddingVertical: spacing.md, position: 'absolute', right: 0 },
+  selectionCount: { color: colors.text.secondary, ...typography.caption, fontWeight: '700', marginBottom: spacing.sm },
+  placementActions: { flexDirection: 'row', gap: spacing.sm },
+  cancelSelectionButton: { borderRadius: radii.medium, flex: 1 },
+  placementButton: { borderRadius: radii.medium, flex: 1 },
+  undoRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
+  undoMessage: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
+  undoAction: { color: colors.brand.action, ...typography.caption, fontWeight: '900', minHeight: interaction.minimumTouchSize, paddingVertical: spacing.md },
 });

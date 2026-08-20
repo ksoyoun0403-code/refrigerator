@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -9,6 +8,8 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Button } from '../../design-system/Button';
+import { colors, radii, spacing, typography } from '../../design-system/tokens';
 import { scanExpirationImage } from './expirationApi';
 import { ExpirationRegistrationForm } from './ExpirationRegistrationForm';
 import { ExpirationItem, ExpirationScanResult, LocalImage } from './types';
@@ -86,10 +87,8 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
     setErrorMessage(undefined);
     try {
       setResult(await scanExpirationImage(image));
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : '이미지를 스캔하지 못했습니다.',
-      );
+    } catch {
+      setErrorMessage('??? ??? ??? ????. ?? ? ?? ??????.');
     } finally {
       setIsScanning(false);
     }
@@ -105,18 +104,16 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   const registered = async (item: ExpirationItem) => {
     await onRegistered(item);
     reset();
-    Alert.alert('등록 완료', `${item.name}을(를) 냉장고 목록에 저장했습니다.`);
+    Alert.alert('?? ?? ??!', item.name + '?(?) ??? ??? ?????.');
   };
 
   if (!image) {
     return (
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        label="사진으로 추가"
         onPress={openImageSource}
-        style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.primaryButtonText}>사진으로 추가</Text>
-      </Pressable>
+        style={styles.primaryButton}
+      />
     );
   }
 
@@ -133,25 +130,13 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
       </View>
 
       {!result && (
-        <Pressable
-          accessibilityRole="button"
+        <Button
           disabled={isScanning}
+          label={isScanning ? '유통기한 스캔 중' : '이 사진 스캔하기'}
+          loading={isScanning}
           onPress={() => void scanImage()}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            isScanning && styles.disabledButton,
-            pressed && !isScanning && styles.pressed,
-          ]}
-        >
-          {isScanning ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color="#ffffff" />
-              <Text style={styles.primaryButtonText}>유통기한 스캔 중</Text>
-            </View>
-          ) : (
-            <Text style={styles.primaryButtonText}>이 사진 스캔하기</Text>
-          )}
-        </Pressable>
+          style={styles.primaryButton}
+        />
       )}
 
       {errorMessage && (
@@ -184,14 +169,14 @@ function RecognitionFailure({
 }) {
   const messages = {
     NO_TEXT_DETECTED: {
-      title: '사진에서 글자를 찾지 못했어요',
+      title: '???? ??? ?? ????',
       description:
-        '유통기한이 화면에 크게 보이도록 가까이에서 다시 촬영하거나 아래에서 직접 입력해주세요.',
+        '???? ??? ? ? ???? ????? ?? ?????.',
     },
     LOW_QUALITY_TEXT: {
-      title: '글자가 흐리거나 너무 작아요',
+      title: '??? ?? ???',
       description:
-        '빛 반사를 피하고 날짜 부분에 초점을 맞춰 다시 촬영하거나 아래에서 직접 입력해주세요.',
+        '???? ??? ?? ??, ??? ??? ?? ?????.',
     },
     NO_DATE_DETECTED: {
       title: '유통기한 날짜를 찾지 못했어요',
@@ -219,20 +204,16 @@ function inferMimeType(fileName?: string | null) {
 }
 
 const styles = StyleSheet.create({
-  scannerCard: { marginTop: 26 },
-  preview: { backgroundColor: '#ebe6dc', borderRadius: 18, height: 260, width: '100%' },
-  imageActions: { flexDirection: 'row', gap: 20, justifyContent: 'flex-end', marginTop: 12 },
-  secondaryAction: { color: '#2f6b45', fontSize: 14, fontWeight: '700' },
-  removeAction: { color: '#a54d42', fontSize: 14, fontWeight: '700' },
-  primaryButton: { alignItems: 'center', backgroundColor: '#2f6b45', borderRadius: 16, marginTop: 18, padding: 17 },
-  primaryButtonText: { color: '#ffffff', fontSize: 17, fontWeight: '700' },
-  loadingRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  disabledButton: { opacity: 0.65 },
-  pressed: { opacity: 0.8 },
-  errorCard: { backgroundColor: '#fff0ed', borderColor: '#f2c4bc', borderRadius: 16, borderWidth: 1, marginTop: 16, padding: 16 },
-  errorTitle: { color: '#873d33', fontSize: 16, fontWeight: '700' },
-  errorDescription: { color: '#8d554d', fontSize: 14, lineHeight: 20, marginTop: 5 },
-  warningCard: { backgroundColor: '#fff8df', borderColor: '#ead794', borderRadius: 16, borderWidth: 1, marginTop: 16, padding: 16 },
-  warningTitle: { color: '#705614', fontSize: 16, fontWeight: '800' },
-  warningDescription: { color: '#756738', fontSize: 14, lineHeight: 20, marginTop: 5 },
+  scannerCard: { marginTop: spacing.xxl },
+  preview: { backgroundColor: colors.surfaceMuted, borderRadius: radii.xlarge, height: 260, width: '100%' },
+  imageActions: { flexDirection: 'row', gap: spacing.xl, justifyContent: 'flex-end', marginTop: spacing.md },
+  secondaryAction: { color: colors.brand.action, ...typography.label },
+  removeAction: { color: colors.danger, ...typography.label },
+  primaryButton: { marginTop: spacing.xl, minHeight: 56 },
+  errorCard: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderRadius: radii.large, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
+  errorTitle: { color: colors.danger, ...typography.bodyStrong },
+  errorDescription: { color: colors.text.secondary, ...typography.label, fontWeight: '400', marginTop: spacing.xs },
+  warningCard: { backgroundColor: colors.warningSoft, borderColor: colors.warningBorder, borderRadius: radii.large, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
+  warningTitle: { color: colors.warning, ...typography.bodyStrong, fontWeight: '800' },
+  warningDescription: { color: colors.text.secondary, ...typography.label, fontWeight: '400', marginTop: spacing.xs },
 });
