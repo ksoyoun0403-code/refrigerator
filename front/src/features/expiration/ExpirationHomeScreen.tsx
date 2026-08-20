@@ -86,8 +86,8 @@ export function ExpirationHomeScreen() {
 
   const confirmDelete = (item: ExpirationItem) => {
     Alert.alert(
-      '식재료 삭제',
-      `${item.name}을(를) 삭제할까요? 연결된 스캔 기록도 함께 삭제합니다.`,
+      '재료를 삭제할까요?',
+      `${item.name}을(를) 삭제하면 연결된 스캔 기록도 함께 사라져요.`,
       [
         { text: '취소', style: 'cancel' },
         { text: '삭제', style: 'destructive', onPress: () => void removeItem(item) },

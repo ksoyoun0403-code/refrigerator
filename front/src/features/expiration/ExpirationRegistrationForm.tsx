@@ -184,6 +184,7 @@ export function ExpirationRegistrationForm(props: Props) {
       </View>
       {scan && scan.candidates.length > 0 && (
         <View style={styles.candidates}>
+          <Text style={styles.candidateHint}>날짜 후보를 눌러 바로 선택할 수 있어요.</Text>
           {scan.candidates.map((candidate) => (
             <Pressable
               key={`${candidate.expirationDate}-${candidate.rawText}`}
@@ -268,13 +269,14 @@ const styles = StyleSheet.create({
   unitSelectedText: { color: colors.text.inverse, fontWeight: '700', textAlign: 'center' },
   labelRow: { alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between' },
   clearAction: { color: colors.brand.action, ...typography.caption, fontWeight: '700', marginBottom: spacing.sm, minHeight: interaction.minimumTouchSize },
-  candidates: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
-  dateCandidate: { backgroundColor: colors.surfaceMuted, borderColor: 'transparent', borderRadius: radii.small, borderWidth: 1, minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  dateCandidateSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary },
-  dateCandidateText: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
-  error: { color: colors.danger, ...typography.label, marginTop: spacing.md },
-  saveButton: { marginTop: spacing.xl },
+  candidates: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  candidateHint: { color: colors.text.secondary, ...typography.caption, marginBottom: spacing.xs, width: '100%' },
+  dateCandidate: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.small, borderWidth: 1, minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  dateCandidateSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
+  dateCandidateText: { color: colors.text.primary, ...typography.label, fontWeight: '700' },
+  error: { color: colors.danger, ...typography.caption, marginTop: spacing.sm },
   editActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
-  editSaveButton: { flex: 1, marginTop: 0 },
-  cancelButton: { flex: 1 },
+  cancelButton: { flex: 0.8 },
+  saveButton: { flex: 1 },
+  editSaveButton: { flex: 1.2 },
 });

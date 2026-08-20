@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Alert,
   Image,
@@ -110,7 +110,7 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   if (!image) {
     return (
       <Button
-        label="사진으로 추가"
+        label="추가"
         onPress={openImageSource}
         style={styles.primaryButton}
       />
@@ -170,18 +170,15 @@ function RecognitionFailure({
   const messages = {
     NO_TEXT_DETECTED: {
       title: '사진에서 글자를 읽지 못했어요',
-      description:
-        '라벨이나 날짜가 더 잘 보이도록 가까이에서 다시 찍어주세요.',
+      description: '라벨이나 날짜가 더 잘 보이도록 가까이에서 다시 찍어주세요.',
     },
     LOW_QUALITY_TEXT: {
       title: '사진이 너무 흐려요',
-      description:
-        '흔들림이 없도록 다시 찍고, 글자가 가운데 오게 맞춰주세요.',
+      description: '흔들림이 없도록 다시 찍고, 글자가 가운데 오게 맞춰주세요.',
     },
     NO_DATE_DETECTED: {
       title: '유통기한 날짜를 찾지 못했어요',
-      description:
-        '날짜가 보이는 부분을 조금 더 가까이 찍어서 다시 시도해주세요.',
+      description: '날짜가 보이는 부분을 조금 더 가까이 찍어서 다시 시도해주세요.',
     },
   } as const;
   const message = messages[reason];
@@ -209,7 +206,7 @@ const styles = StyleSheet.create({
   imageActions: { flexDirection: 'row', gap: spacing.xl, justifyContent: 'flex-end', marginTop: spacing.md },
   secondaryAction: { color: colors.brand.action, ...typography.label },
   removeAction: { color: colors.danger, ...typography.label },
-  primaryButton: { marginTop: spacing.xl, minHeight: 56 },
+  primaryButton: { marginTop: spacing.xl, minHeight: 56, width: '100%' },
   errorCard: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderRadius: radii.large, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
   errorTitle: { color: colors.danger, ...typography.bodyStrong },
   errorDescription: { color: colors.text.secondary, ...typography.label, fontWeight: '400', marginTop: spacing.xs },
