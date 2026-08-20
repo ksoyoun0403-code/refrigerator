@@ -169,8 +169,8 @@ async function main() {
     .filter((item) => fixtureIds.has(item.id))
     .map((item) => item.name);
   assert.deepEqual(sortedFixtureNames, [
-    'use-soon-first',
     'use-soon-second',
+    'use-soon-first',
     'later-expiration',
     'same-date-earlier-purchase',
     'same-date-later-purchase',
@@ -198,7 +198,7 @@ async function main() {
   if (server.exitCode && server.exitCode !== 0) {
     throw new Error(serverError || `Backend exited with ${server.exitCode}.`);
   }
-  console.log('Database integration, update, move, and sorting test passed.');
+  console.log('Database integration, update, section move, and expiration sorting test passed.');
 }
 
 main()

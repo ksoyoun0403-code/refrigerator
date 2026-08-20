@@ -6,9 +6,10 @@ async function bootstrap() {
   app.enableCors();
   app.setGlobalPrefix('v1');
   const port = Number(process.env.PORT ?? 3000);
+  const host = process.env.HOST ?? '0.0.0.0';
 
-  await app.listen(port);
-  console.log(`mydish backend is running on http://localhost:${port}`);
+  await app.listen(port, host);
+  console.log(`mydish backend is running on http://${host}:${port}`);
 }
 
 void bootstrap();

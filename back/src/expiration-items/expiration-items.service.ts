@@ -80,7 +80,11 @@ export class ExpirationItemsService {
     const [useSoonItems, defaultItems] = await Promise.all([
       this.prisma.client.expirationItem.findMany({
         where: { section: 'USE_SOON' },
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        orderBy: [
+          { expirationDate: { sort: 'asc', nulls: 'last' } },
+          { purchasedAt: 'asc' },
+          { createdAt: 'asc' },
+        ],
       }),
       this.prisma.client.expirationItem.findMany({
         where: { section: 'DEFAULT' },

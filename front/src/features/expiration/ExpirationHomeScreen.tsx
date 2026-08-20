@@ -248,7 +248,7 @@ export function ExpirationHomeScreen() {
         <Text style={styles.eyebrow}>MYDISH</Text>
         <Text style={styles.title}>유통기한을 사진 한 장으로</Text>
         <Text style={styles.description}>
-          ??? ??? ?? ??? ??? ? ??? ??? ?? ??? ? ???.
+          사진을 찍으면 인식 결과를 확인한 뒤 냉장고 목록에 바로 저장할 수 있어요.
         </Text>
 
         <ExpirationImageScanner onRegistered={itemRegistered} />
@@ -296,7 +296,7 @@ export function ExpirationHomeScreen() {
         ) : items.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>아직 등록한 식품이 없어요</Text>
-            <Text style={styles.emptyDescription}>? ?? ??? ??? ??? ??????.</Text>
+            <Text style={styles.emptyDescription}>첫 번째 사진을 찍어서 재료를 추가해보세요.</Text>
           </View>
         ) : (
           <View style={styles.itemGroups}>

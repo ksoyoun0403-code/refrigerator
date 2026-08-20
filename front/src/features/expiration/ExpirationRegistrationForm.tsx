@@ -65,11 +65,11 @@ export function ExpirationRegistrationForm(props: Props) {
   const save = async () => {
     if (isSaving) return;
     if (!name.trim()) {
-      setErrorMessage('식재료 이름을 입력해주세요.');
+      setErrorMessage('재료 이름을 입력해주세요.');
       return;
     }
     if (!/^\d{1,6}(?:\.\d{1,3})?$/.test(quantity) || Number(quantity) <= 0) {
-      setErrorMessage('0보다 큰 수량을 입력해주세요.');
+      setErrorMessage('1개 이상인 수량을 입력해주세요.');
       return;
     }
     if (expirationDate && !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
@@ -103,11 +103,11 @@ export function ExpirationRegistrationForm(props: Props) {
         });
         await props.onRegistered(item);
       } else {
-        throw new Error('등록할 스캔 정보가 없습니다.');
+        throw new Error('등록할 스캔 정보가 없어요.');
       }
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : '식재료를 저장하지 못했습니다.',
+        error instanceof Error ? error.message : '재료 정보를 저장하지 못했어요.',
       );
     } finally {
       setIsSaving(false);
@@ -117,20 +117,20 @@ export function ExpirationRegistrationForm(props: Props) {
   return (
     <View style={styles.formCard}>
       <Text style={styles.title}>
-        {editingItem ? '??? ?? ??' : '?? ?? ?? ? ??'}
+        {editingItem ? '식재료 정보 수정' : '인식 결과 확인 및 저장'}
       </Text>
       <Text style={styles.helper}>
         {editingItem
-          ? '???? ??? ??? ?? ????.'
-          : '???? ?? ??? ?? ????.'}
+          ? '저장하면 냉장고 목록에 바로 반영돼요.'
+          : '구매일은 오늘 날짜로 자동 저장돼요.'}
       </Text>
 
-      <Text style={styles.label}>식재료 이름</Text>
+      <Text style={styles.label}>재료 이름</Text>
       <TextInput
         editable={!isSaving}
         maxLength={100}
         onChangeText={setName}
-        placeholder="예: 우유"
+        placeholder="예: 토마토"
         placeholderTextColor={colors.text.muted}
         selectionColor={colors.brand.primary}
         style={styles.input}
@@ -154,7 +154,7 @@ export function ExpirationRegistrationForm(props: Props) {
           onPress={() => setIsUnitOpen((open) => !open)}
           style={styles.unitButton}
         >
-          <Text style={styles.unitButtonText}>{UNIT_LABELS[unit]} ⌄</Text>
+          <Text style={styles.unitButtonText}>{UNIT_LABELS[unit]} 단위</Text>
         </Pressable>
       </View>
       {isUnitOpen && (
@@ -179,7 +179,7 @@ export function ExpirationRegistrationForm(props: Props) {
       <View style={styles.labelRow}>
         <Text style={styles.label}>유통기한 (선택)</Text>
         <Pressable disabled={isSaving} onPress={() => setExpirationDate('')}>
-          <Text style={styles.clearAction}>입력 안 함</Text>
+          <Text style={styles.clearAction}>입력 지우기</Text>
         </Pressable>
       </View>
       {scan && scan.candidates.length > 0 && (

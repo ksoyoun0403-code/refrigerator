@@ -88,7 +88,7 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
     try {
       setResult(await scanExpirationImage(image));
     } catch {
-      setErrorMessage('??? ??? ??? ????. ?? ? ?? ??????.');
+      setErrorMessage('사진을 서버로 보내지 못했어요. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsScanning(false);
     }
@@ -104,7 +104,7 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   const registered = async (item: ExpirationItem) => {
     await onRegistered(item);
     reset();
-    Alert.alert('?? ?? ??!', item.name + '?(?) ??? ??? ?????.');
+    Alert.alert('재료 추가 성공!', `${item.name}이(가) 냉장고 목록에 추가됐어요.`);
   };
 
   if (!image) {
@@ -132,7 +132,7 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
       {!result && (
         <Button
           disabled={isScanning}
-          label={isScanning ? '유통기한 스캔 중' : '이 사진 스캔하기'}
+          label={isScanning ? '인식 중이에요' : '이 사진 스캔하기'}
           loading={isScanning}
           onPress={() => void scanImage()}
           style={styles.primaryButton}
@@ -169,19 +169,19 @@ function RecognitionFailure({
 }) {
   const messages = {
     NO_TEXT_DETECTED: {
-      title: '???? ??? ?? ????',
+      title: '사진에서 글자를 읽지 못했어요',
       description:
-        '???? ??? ? ? ???? ????? ?? ?????.',
+        '라벨이나 날짜가 더 잘 보이도록 가까이에서 다시 찍어주세요.',
     },
     LOW_QUALITY_TEXT: {
-      title: '??? ?? ???',
+      title: '사진이 너무 흐려요',
       description:
-        '???? ??? ?? ??, ??? ??? ?? ?????.',
+        '흔들림이 없도록 다시 찍고, 글자가 가운데 오게 맞춰주세요.',
     },
     NO_DATE_DETECTED: {
       title: '유통기한 날짜를 찾지 못했어요',
       description:
-        '유통기한, 소비기한 또는 “까지” 문구가 보이는지 확인하고 아래에서 날짜를 직접 입력해주세요.',
+        '날짜가 보이는 부분을 조금 더 가까이 찍어서 다시 시도해주세요.',
     },
   } as const;
   const message = messages[reason];

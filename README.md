@@ -14,32 +14,57 @@
 4. 확인된 결과를 식재료 목록에 저장
 5. 목록을 기반으로 알림·레시피 등 확장
 
-## 현재 준비된 범위
+## 현재 구현 상태
 
-- `front`: 핵심 흐름을 보여주는 홈 화면, API 타입과 호출 경계
-- `back`: 이미지 스캔 모듈, 교체 가능한 인식기 인터페이스, 유통기한 목록 모듈
-- Backend 스캔 모듈의 기본 인식기는 Google Cloud Vision이며, Tesseract.js 구현은 비교와 대체를 위해 유지합니다.
-- Google Cloud Vision은 실제 식품 이미지 16장 중 15장에서 정답 날짜가 후보에 포함됐고(93.8%), 평균 처리시간은 약 0.55초였습니다.
-- 날짜 후보 충돌, 낮은 신뢰도와 OCR 보정 결과는 자동 확정하지 않고 사용자 확인 대상으로 반환합니다.
-- 목록 저장소는 현재 메모리 방식이므로 서버 재시작 시 초기화됩니다.
+### Phase 1 — 이미지 기반 식재료 등록 (완료)
 
-## 다음 구현 순서
+- `expo-image-picker`를 사용한 카메라 촬영 및 앨범 이미지 선택
+- JPEG/PNG 이미지 미리보기, 교체, 제거 및 10MB 크기 검증
+- `multipart/form-data` 이미지 업로드와 Google Cloud Vision 기반 날짜 인식
+- Sharp 기반 자동 회전, 후보 영역 추출, 확대 및 명암 보정
+- 여러 날짜 후보 표시와 사용자의 유통기한 확인·수정·삭제
+- 식재료명, 수량, 단위 입력 및 구매일 기본값 처리
+- PostgreSQL과 Prisma를 사용한 식재료 및 스캔 결과 영구 저장
+- 등록 완료 후 냉장고 목록 자동 갱신
 
-1. Google Cloud Vision 실패 이미지와 다중 날짜의 사용자 확인 정책 보완
-2. PostgreSQL과 Prisma 영구 저장소 연결
-3. 이미지 저장과 스캔 API 완성
-4. `expo-image-picker`로 카메라·앨범 선택 연결
-5. 식재료명, 수량, 단위와 선택적인 유통기한 입력 화면 구현
-6. 촬영부터 DB 등록과 목록 갱신까지 전체 흐름 연결
-7. 바로 써야 하는 재료 분류, 알림과 레시피 기능 추가
+이미지는 OCR 요청 중에만 메모리에서 처리하며 파일이나 DB에 저장하지 않습니다. Backend의 기본 인식기는 Google Cloud Vision이고, Tesseract.js 구현은 비교와 대체를 위해 유지합니다. Google Cloud Vision은 검증용 실제 식품 이미지 16장 중 15장에서 정답 날짜를 후보에 포함했으며(93.8%), 평균 처리 시간은 약 0.55초였습니다.
+
+### Phase 2 — 냉장고 목록 관리 (진행 중)
+
+- 저장된 식재료 목록 조회
+- 식재료 정보 수정 및 삭제
+- `일반 냉장고`와 `사용 임박` 영역 분리
+- 재료명과 유통기한만 표시하는 2열 카드 목록
+- 편집 모드의 같은 영역 다중 선택, 반대 영역으로 일괄 이동 및 되돌리기
+- 삭제 모드의 카드별 삭제
+- 두 영역 모두 유통기한이 가까운 순서로 자동 정렬
+
+영역 내부 순서는 유통기한을 기준으로 자동 관리하며 드래그 순서 변경은 제공하지 않습니다.
+
+### 후속 Phase
+
+1. Google Cloud Vision 실패 이미지와 다중 날짜 확인 흐름 보완
+2. 유통기한 및 구매일 기반 알림
+3. 식재료 검색과 필터
+4. 보유 식재료 기반 레시피 추천
+5. 사용자 인증과 사용자별 냉장고 분리
 
 ## 실행
+
+루트의 `.env.example`, `back/.env.example`, `front/.env.example`을 참고해 각 환경변수를 설정합니다. 실제 Secret이 포함된 `.env` 파일은 Git에 커밋하지 않습니다.
+
+PostgreSQL:
+
+```bash
+docker compose up -d postgres
+```
 
 백엔드:
 
 ```bash
 cd back
 npm install
+npm run prisma:migrate:deploy
 npm run start:dev
 ```
 
@@ -52,11 +77,32 @@ npm install
 npm run start
 ```
 
-실기기에서는 `.env`의 `localhost`를 개발 PC의 로컬 IP로 바꿔야 합니다.
+실기기에서는 `.env`의 `EXPO_PUBLIC_API_URL`을 개발 PC의 로컬 IP로 바꿔야 합니다.
 
-## API 골격
+## API
 
 - `GET /v1/health`
 - `POST /v1/expiration-scans` — `image` 필드의 multipart 업로드
 - `GET /v1/expiration-items`
 - `POST /v1/expiration-items`
+- `PATCH /v1/expiration-items/:id` — 식재료 정보 또는 냉장고 영역 수정
+- `DELETE /v1/expiration-items/:id`
+
+## 검증
+
+Frontend:
+
+```bash
+cd front
+npm run typecheck
+```
+
+Backend:
+
+```bash
+cd back
+npm run typecheck
+npm run build
+```
+
+OCR 날짜 파서, 이미지 전처리, Google Cloud Vision 응답 및 PostgreSQL 통합 검증용 스크립트는 `back/package.json`에서 확인할 수 있습니다.
