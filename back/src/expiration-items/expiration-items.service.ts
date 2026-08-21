@@ -16,6 +16,7 @@ import {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUANTITY_PATTERN = /^\d{1,6}(?:\.\d{1,3})?$/;
+const USE_SOON_DAYS = 3;
 
 function isCalendarDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -45,6 +46,18 @@ function dateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+function addDays(value: string, days: number) {
+  const date = toDatabaseDate(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return dateOnly(date);
+}
+
+function shouldUseSoon(expirationDate: string | null) {
+  return Boolean(
+    expirationDate && expirationDate <= addDays(todayInSeoul(), USE_SOON_DAYS),
+  );
+}
+
 function mapItem(item: {
   id: string;
   scanId: string;
@@ -53,6 +66,7 @@ function mapItem(item: {
   unit: string;
   purchasedAt: Date;
   expirationDate: Date | null;
+  source: string;
   section: string;
   sortOrder: number;
   createdAt: Date;
@@ -65,7 +79,7 @@ function mapItem(item: {
     unit: item.unit as ExpirationItemUnit,
     purchasedAt: dateOnly(item.purchasedAt),
     expirationDate: item.expirationDate ? dateOnly(item.expirationDate) : null,
-    source: 'image',
+    source: item.source === 'MANUAL' ? 'manual' : 'image',
     section: item.section as ExpirationItem['section'],
     sortOrder: item.sortOrder,
     createdAt: item.createdAt.toISOString(),
@@ -77,6 +91,8 @@ export class ExpirationItemsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
+    await this.promoteUseSoonItems();
+
     const [useSoonItems, defaultItems] = await Promise.all([
       this.prisma.client.expirationItem.findMany({
         where: { section: 'USE_SOON' },
@@ -102,6 +118,42 @@ export class ExpirationItemsService {
     const normalized = this.validate(input);
 
     try {
+      if (!normalized.scanId) {
+        const item = await this.prisma.client.$transaction(
+          async (transaction) => {
+            const section = shouldUseSoon(normalized.expirationDate)
+              ? 'USE_SOON'
+              : 'DEFAULT';
+            const lastPosition = await transaction.expirationItem.aggregate({
+              where: { section },
+              _max: { sortOrder: true },
+            });
+            const scan = await transaction.expirationScan.create({
+              data: { status: 'CONFIRMED' },
+              select: { id: true },
+            });
+
+            return transaction.expirationItem.create({
+              data: {
+                scanId: scan.id,
+                name: normalized.name,
+                quantity: normalized.quantity,
+                unit: normalized.unit,
+                purchasedAt: toDatabaseDate(normalized.purchasedAt),
+                expirationDate: normalized.expirationDate
+                  ? toDatabaseDate(normalized.expirationDate)
+                  : null,
+                source: 'MANUAL',
+                section,
+                sortOrder: (lastPosition._max.sortOrder ?? -1) + 1,
+              },
+            });
+          },
+        );
+
+        return mapItem(item);
+      }
+
       const item = await this.prisma.client.$transaction(async (transaction) => {
         const scan = await transaction.expirationScan.findUnique({
           where: { id: normalized.scanId },
@@ -114,9 +166,16 @@ export class ExpirationItemsService {
         }
 
         const lastPosition = await transaction.expirationItem.aggregate({
-          where: { section: 'DEFAULT' },
+          where: {
+            section: shouldUseSoon(normalized.expirationDate)
+              ? 'USE_SOON'
+              : 'DEFAULT',
+          },
           _max: { sortOrder: true },
         });
+        const section = shouldUseSoon(normalized.expirationDate)
+          ? 'USE_SOON'
+          : 'DEFAULT';
         const claimed = await transaction.expirationScan.updateMany({
           where: { id: scan.id, status: 'NEEDS_REVIEW' },
           data: { status: 'CONFIRMED' },
@@ -136,7 +195,7 @@ export class ExpirationItemsService {
               ? toDatabaseDate(normalized.expirationDate)
               : null,
             source: 'IMAGE',
-            section: 'DEFAULT',
+            section,
             sortOrder: (lastPosition._max.sortOrder ?? -1) + 1,
           },
         });
@@ -190,7 +249,12 @@ export class ExpirationItemsService {
       }
 
       let sortOrder = current.sortOrder;
-      if (normalized.section === 'USE_SOON' && current.section !== 'USE_SOON') {
+      const section =
+        normalized.expirationDate !== undefined &&
+        shouldUseSoon(normalized.expirationDate)
+          ? 'USE_SOON'
+          : normalized.section;
+      if (section === 'USE_SOON' && current.section !== 'USE_SOON') {
         const lastPosition = await transaction.expirationItem.aggregate({
           where: { section: 'USE_SOON' },
           _max: { sortOrder: true },
@@ -211,6 +275,7 @@ export class ExpirationItemsService {
               : normalized.expirationDate
                 ? toDatabaseDate(normalized.expirationDate)
                 : null,
+          section,
           sortOrder,
         },
       });
@@ -227,7 +292,7 @@ export class ExpirationItemsService {
     const purchasedAt = input.purchasedAt?.trim() || todayInSeoul();
     const expirationDate = input.expirationDate?.trim() || null;
 
-    if (!scanId || !UUID_PATTERN.test(scanId)) {
+    if (scanId && !UUID_PATTERN.test(scanId)) {
       throw new BadRequestException('유효한 scanId가 필요합니다.');
     }
     if (!name || name.length > 100) {
@@ -322,5 +387,17 @@ export class ExpirationItemsService {
     if (!UUID_PATTERN.test(id)) {
       throw new BadRequestException('유효한 식재료 ID가 필요합니다.');
     }
+  }
+
+  private async promoteUseSoonItems() {
+    await this.prisma.client.expirationItem.updateMany({
+      where: {
+        section: 'DEFAULT',
+        expirationDate: {
+          lte: toDatabaseDate(addDays(todayInSeoul(), USE_SOON_DAYS)),
+        },
+      },
+      data: { section: 'USE_SOON' },
+    });
   }
 }

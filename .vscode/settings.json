@@ -1,0 +1,9 @@
+{
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "java.import.gradle.enabled": false,
+    "gradle.autoDetect": "off",
+    "java.import.exclusions": [
+        "**/node_modules/**"
+    ],
+    "java.compile.nullAnalysis.mode": "automatic"
+}

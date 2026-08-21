@@ -37,6 +37,7 @@ export function ExpirationHomeScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isMovingSelection, setIsMovingSelection] = useState(false);
   const [previousPlacement, setPreviousPlacement] = useState<PreviousPlacement[]>();
+  const [isManualFormOpen, setIsManualFormOpen] = useState(false);
 
   const loadItems = useCallback(async () => {
     setIsLoading(true);
@@ -59,6 +60,7 @@ export function ExpirationHomeScreen() {
   }, [previousPlacement]);
 
   const itemRegistered = async (item: ExpirationItem) => {
+    setIsManualFormOpen(false);
     setItems((current) => sortItemsForDisplay([...current, item]));
     await loadItems();
   };
@@ -252,6 +254,20 @@ export function ExpirationHomeScreen() {
         </Text>
 
         <ExpirationImageScanner onRegistered={itemRegistered} />
+        {isManualFormOpen ? (
+          <ExpirationRegistrationForm
+            manual
+            onCancel={() => setIsManualFormOpen(false)}
+            onRegistered={itemRegistered}
+          />
+        ) : (
+          <Button
+            label="직접 입력"
+            onPress={() => setIsManualFormOpen(true)}
+            style={styles.manualButton}
+            variant="secondary"
+          />
+        )}
 
         <View style={styles.listHeader}>
           <Text style={styles.sectionTitle}>냉장고 목록</Text>
@@ -510,6 +526,7 @@ const styles = StyleSheet.create({
   deleteModeButton: { alignItems: 'center', backgroundColor: colors.dangerSoft, borderRadius: radii.medium, justifyContent: 'center', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md },
   deleteModeButtonText: { color: colors.danger, ...typography.caption, fontWeight: '800' },
   doneAction: { color: colors.brand.action, ...typography.label, fontWeight: '800', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.xs, paddingVertical: spacing.md },
+  manualButton: { borderRadius: radii.medium, marginTop: spacing.md },
   modeDescription: { color: colors.text.muted, ...typography.caption, marginBottom: spacing.lg, marginTop: -spacing.xs },
   emptyCard: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, padding: spacing.xxxl },
   emptyTitle: { color: colors.text.primary, ...typography.bodyStrong },

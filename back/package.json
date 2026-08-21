@@ -9,6 +9,7 @@
     "start:dev": "node --env-file-if-exists=.env -r ts-node/register src/main.ts",
     "pretypecheck": "npm run prisma:generate",
     "test:date-parser": "npm run build && node scripts/test-expiration-date-parser.cjs",
+    "test:recipe-suggestions": "npm run build && node scripts/test-recipe-suggestions.cjs",
     "test:image-preprocessor": "npm run build && node scripts/test-image-preprocessor.cjs",
     "test:ocr": "npm run build && node scripts/test-ocr.cjs",
     "test:vision": "npm run build && node --env-file=.env scripts/test-google-vision-ocr.cjs",

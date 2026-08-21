@@ -8,3 +8,4 @@ npm-debug.log*
 *.tsbuildinfo
 back/src/generated/prisma/
 back/backend.runtime*.log
+.mydish-debug-state/

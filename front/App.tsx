@@ -1,5 +1,5 @@
-import { ExpirationHomeScreen } from './src/features/expiration/ExpirationHomeScreen';
+import { MainTabNavigator } from './src/navigation/MainTabNavigator';
 
 export default function App() {
-  return <ExpirationHomeScreen />;
+  return <MainTabNavigator />;
 }

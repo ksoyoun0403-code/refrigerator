@@ -22,7 +22,8 @@
           "cameraPermission": "유통기한을 인식할 식품 사진을 촬영하기 위해 카메라에 접근합니다.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-splash-screen"
     ]
   }
 }

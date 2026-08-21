@@ -11,14 +11,20 @@ import {
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:3000/v1';
 
+function getConnectionErrorMessage() {
+  const localHostHint =
+    API_BASE_URL.includes('127.0.0.1') || API_BASE_URL.includes('localhost')
+      ? ' 실기기에서 테스트 중이면 EXPO_PUBLIC_API_URL을 PC의 같은 Wi-Fi IP 주소로 바꿔주세요.'
+      : '';
+  return `백엔드에 연결할 수 없습니다. API 주소(${API_BASE_URL})와 서버 실행 상태를 확인해주세요.${localHostHint}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, init);
   } catch {
-    throw new Error(
-      `백엔드에 연결할 수 없습니다. API 주소(${API_BASE_URL})와 서버 실행 상태를 확인해주세요.`,
-    );
+    throw new Error(getConnectionErrorMessage());
   }
 
   if (!response.ok) {

@@ -20,17 +20,18 @@ export type ExpirationItem = {
   unit: ExpirationItemUnit;
   purchasedAt: string;
   expirationDate: string | null;
-  source: 'image';
+  source: 'image' | 'manual';
   section: 'DEFAULT' | 'USE_SOON';
   sortOrder: number;
   createdAt: string;
 };
 
 export type CreateExpirationItem = {
-  scanId: string;
+  scanId?: string;
   name: string;
   quantity: string;
   unit: ExpirationItemUnit;
+  purchasedAt?: string;
   expirationDate: string | null;
 };
 

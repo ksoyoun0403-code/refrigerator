@@ -9,6 +9,7 @@ import {
 import { Button } from '../../design-system/Button';
 import { colors, interaction, radii, spacing, typography } from '../../design-system/tokens';
 import { createExpirationItem, updateExpirationItem } from './expirationApi';
+import { formatExpirationDateInput } from './expirationDateInput';
 import {
   EXPIRATION_ITEM_UNITS,
   ExpirationItem,
@@ -30,21 +31,32 @@ const UNIT_LABELS: Record<ExpirationItemUnit, string> = {
 
 type RegistrationProps = {
   scan: ExpirationScanResult;
+  manual?: never;
   item?: never;
   onRegistered(item: ExpirationItem): void | Promise<void>;
   onUpdated?: never;
   onCancel?: never;
 };
 
+type ManualRegistrationProps = {
+  scan?: never;
+  manual: true;
+  item?: never;
+  onRegistered(item: ExpirationItem): void | Promise<void>;
+  onUpdated?: never;
+  onCancel(): void;
+};
+
 type EditProps = {
   scan?: never;
+  manual?: never;
   item: ExpirationItem;
   onRegistered?: never;
   onUpdated(item: ExpirationItem): void | Promise<void>;
   onCancel(): void;
 };
 
-type Props = RegistrationProps | EditProps;
+type Props = RegistrationProps | ManualRegistrationProps | EditProps;
 
 export function ExpirationRegistrationForm(props: Props) {
   const editingItem = props.item;
@@ -58,7 +70,9 @@ export function ExpirationRegistrationForm(props: Props) {
   const [expirationDate, setExpirationDate] = useState(
     editingItem?.expirationDate ?? scan?.candidates[0]?.expirationDate ?? '',
   );
-  const [purchasedAt, setPurchasedAt] = useState(editingItem?.purchasedAt ?? '');
+  const [purchasedAt, setPurchasedAt] = useState(
+    editingItem?.purchasedAt ?? getTodayInSeoul(),
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
 
@@ -73,18 +87,21 @@ export function ExpirationRegistrationForm(props: Props) {
       return;
     }
     if (expirationDate && !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
-      setErrorMessage('유통기한은 YYYY-MM-DD 형식으로 입력해주세요.');
+      setErrorMessage('유통기한을 YYYYMMDD 8자리로 입력해주세요.');
       return;
     }
 
     setIsSaving(true);
     setErrorMessage(undefined);
     try {
-      if (editingItem) {
+      if (editingItem || props.manual) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt)) {
           setErrorMessage('구매일은 YYYY-MM-DD 형식으로 입력해주세요.');
           return;
         }
+      }
+
+      if (editingItem) {
         const item = await updateExpirationItem(editingItem.id, {
           name: name.trim(),
           quantity,
@@ -93,12 +110,13 @@ export function ExpirationRegistrationForm(props: Props) {
           expirationDate: expirationDate || null,
         });
         await props.onUpdated(item);
-      } else if (scan) {
+      } else if (scan || props.manual) {
         const item = await createExpirationItem({
-          scanId: scan.scanId,
+          scanId: scan?.scanId,
           name: name.trim(),
           quantity,
           unit,
+          purchasedAt,
           expirationDate: expirationDate || null,
         });
         await props.onRegistered(item);
@@ -117,12 +135,18 @@ export function ExpirationRegistrationForm(props: Props) {
   return (
     <View style={styles.formCard}>
       <Text style={styles.title}>
-        {editingItem ? '식재료 정보 수정' : '인식 결과 확인 및 저장'}
+        {editingItem
+          ? '식재료 정보 수정'
+          : props.manual
+            ? '직접 입력해서 저장'
+            : '인식 결과 확인 및 저장'}
       </Text>
       <Text style={styles.helper}>
         {editingItem
           ? '저장하면 냉장고 목록에 바로 반영돼요.'
-          : '구매일은 오늘 날짜로 자동 저장돼요.'}
+          : props.manual
+            ? '사진 없이 재료와 유통기한을 바로 등록할 수 있어요.'
+            : '인식이 빗나가면 직접 고쳐서 저장해도 돼요.'}
       </Text>
 
       <Text style={styles.label}>재료 이름</Text>
@@ -136,7 +160,6 @@ export function ExpirationRegistrationForm(props: Props) {
         style={styles.input}
         value={name}
       />
-
       <Text style={styles.label}>수량</Text>
       <View style={styles.quantityRow}>
         <TextInput
@@ -201,16 +224,19 @@ export function ExpirationRegistrationForm(props: Props) {
       )}
       <TextInput
         editable={!isSaving}
+        keyboardType="number-pad"
         maxLength={10}
-        onChangeText={setExpirationDate}
-        placeholder="YYYY-MM-DD 또는 비워두기"
+        onChangeText={(value) =>
+          setExpirationDate(formatExpirationDateInput(value))
+        }
+        placeholder="YYYYMMDD (예: 20261201)"
         placeholderTextColor={colors.text.muted}
         selectionColor={colors.brand.primary}
         style={styles.input}
         value={expirationDate}
       />
 
-      {editingItem && (
+      {(editingItem || props.manual) && (
         <>
           <Text style={styles.label}>구매일</Text>
           <TextInput
@@ -227,8 +253,8 @@ export function ExpirationRegistrationForm(props: Props) {
       )}
 
       {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
-      <View style={editingItem ? styles.editActions : undefined}>
-        {editingItem && (
+      <View style={editingItem || props.manual ? styles.editActions : undefined}>
+        {(editingItem || props.manual) && (
           <Button
             disabled={isSaving}
             label="취소"
@@ -250,6 +276,18 @@ export function ExpirationRegistrationForm(props: Props) {
       </View>
     </View>
   );
+}
+
+function getTodayInSeoul() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 const styles = StyleSheet.create({

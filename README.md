@@ -41,13 +41,21 @@
 
 영역 내부 순서는 유통기한을 기준으로 자동 관리하며 드래그 순서 변경은 제공하지 않습니다.
 
+### Phase 3 — AI 레시피 추천 (구현 완료, API Key 필요)
+
+- 냉장고 식재료 최대 12개 다중 선택
+- 인원수, 최대 조리 시간, 기본 양념 보유 여부 설정
+- 보유 재료만 사용하는 레시피를 먼저 표시
+- 추가 재료 1~3개로 만들 수 있는 레시피를 두 번째로 표시
+- 재료별 손질 방법, 조리 순서, 안전 주의사항 제공
+- OpenAI Responses API와 Structured Outputs 기반 응답 생성 및 Backend 의미 검증
+
 ### 후속 Phase
 
 1. Google Cloud Vision 실패 이미지와 다중 날짜 확인 흐름 보완
 2. 유통기한 및 구매일 기반 알림
 3. 식재료 검색과 필터
-4. 보유 식재료 기반 레시피 추천
-5. 사용자 인증과 사용자별 냉장고 분리
+4. 사용자 인증과 사용자별 냉장고 분리
 
 ## 실행
 
@@ -68,6 +76,15 @@ npm run prisma:migrate:deploy
 npm run start:dev
 ```
 
+AI 레시피 추천을 사용하려면 `back/.env`에 Backend 전용 OpenAI 설정을 추가합니다. 실제 키는 Git에 커밋하지 않습니다.
+
+```dotenv
+OPENAI_API_KEY=실제_API_KEY
+OPENAI_RECIPE_MODEL=gpt-5-mini
+```
+
+OpenAI API Key는 [OpenAI API 대시보드](https://platform.openai.com/api-keys)에서 발급할 수 있습니다. 구현은 공식 문서의 [Responses API](https://developers.openai.com/api/docs/guides/text)와 [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)를 사용합니다.
+
 프론트:
 
 ```bash
@@ -87,6 +104,7 @@ npm run start
 - `POST /v1/expiration-items`
 - `PATCH /v1/expiration-items/:id` — 식재료 정보 또는 냉장고 영역 수정
 - `DELETE /v1/expiration-items/:id`
+- `POST /v1/recipe-suggestions` — 선택한 냉장고 재료 기반 AI 레시피 생성
 
 ## 검증
 
@@ -105,4 +123,4 @@ npm run typecheck
 npm run build
 ```
 
-OCR 날짜 파서, 이미지 전처리, Google Cloud Vision 응답 및 PostgreSQL 통합 검증용 스크립트는 `back/package.json`에서 확인할 수 있습니다.
+OCR 날짜 파서, 이미지 전처리, Google Cloud Vision 응답, AI 레시피 계약 및 PostgreSQL 통합 검증용 스크립트는 `back/package.json`에서 확인할 수 있습니다.
