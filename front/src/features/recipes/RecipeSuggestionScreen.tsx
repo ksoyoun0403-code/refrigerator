@@ -19,7 +19,14 @@ import {
 } from '../../design-system/tokens';
 import { getExpirationItems } from '../expiration/expirationApi';
 import { ExpirationItem } from '../expiration/types';
+import { RecipeCard } from './RecipeCard';
 import { generateRecipeSuggestions } from './recipeApi';
+import {
+  deleteSavedRecipe,
+  getSavedRecipes,
+  recipeIdentity,
+  saveRecipe,
+} from './savedRecipeApi';
 import { RecipeSuggestion, RecipeSuggestionResult } from './types';
 
 const SERVING_OPTIONS = [1, 2, 3, 4] as const;
@@ -41,6 +48,8 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<RecipeSuggestionResult>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [savedRecipeIds, setSavedRecipeIds] = useState<Record<string, string>>({});
+  const [savingRecipeKeys, setSavingRecipeKeys] = useState<Set<string>>(new Set());
 
   const loadItems = useCallback(async () => {
     setIsLoadingItems(true);
@@ -59,9 +68,25 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
     }
   }, []);
 
+  const loadSavedRecipeIds = useCallback(async () => {
+    try {
+      const savedRecipes = await getSavedRecipes();
+      setSavedRecipeIds(
+        Object.fromEntries(
+          savedRecipes.map(({ id, recipe }) => [recipeIdentity(recipe), id]),
+        ),
+      );
+    } catch {
+      // Bookmark actions still show their own error when the saved list is unavailable.
+    }
+  }, []);
+
   useEffect(() => {
-    if (isActive) void loadItems();
-  }, [isActive, loadItems]);
+    if (isActive) {
+      void loadItems();
+      void loadSavedRecipeIds();
+    }
+  }, [isActive, loadItems, loadSavedRecipeIds]);
 
   const toggleItem = (item: ExpirationItem) => {
     if (isGenerating) return;
@@ -107,6 +132,41 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
       );
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const toggleBookmark = async (recipe: RecipeSuggestion) => {
+    const key = recipeIdentity(recipe);
+    if (savingRecipeKeys.has(key)) return;
+    setSavingRecipeKeys((current) => new Set(current).add(key));
+    try {
+      const savedId = savedRecipeIds[key];
+      if (savedId) {
+        await deleteSavedRecipe(savedId);
+        setSavedRecipeIds((current) => {
+          const next = { ...current };
+          delete next[key];
+          return next;
+        });
+      } else {
+        const saved = await saveRecipe(recipe);
+        setSavedRecipeIds((current) => ({
+          ...current,
+          [recipeIdentity(saved.recipe)]: saved.id,
+          [key]: saved.id,
+        }));
+      }
+    } catch (error) {
+      Alert.alert(
+        '북마크를 변경하지 못했어요',
+        error instanceof Error ? error.message : '잠시 후 다시 시도해주세요.',
+      );
+    } finally {
+      setSavingRecipeKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -254,13 +314,19 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
           <View style={styles.results}>
             <RecipeGroup
               emptyMessage="선택한 재료만으로 만들 수 있는 레시피를 찾지 못했어요."
+              onToggleBookmark={toggleBookmark}
               recipes={result.availableOnly}
+              savedRecipeIds={savedRecipeIds}
+              savingRecipeKeys={savingRecipeKeys}
               subtitle="추가 장보기 없이 바로 만들 수 있어요."
               title="지금 있는 재료로 만들기"
             />
             <RecipeGroup
               emptyMessage="재료 1~3개를 더해 만들 수 있는 레시피를 찾지 못했어요."
+              onToggleBookmark={toggleBookmark}
               recipes={result.needsFewMore}
+              savedRecipeIds={savedRecipeIds}
+              savingRecipeKeys={savingRecipeKeys}
               subtitle="추가할 재료를 3개 이하로 제한했어요."
               title="조금만 추가해서 만들기"
             />
@@ -314,12 +380,18 @@ function OptionRow<T extends number>({
 
 function RecipeGroup({
   emptyMessage,
+  onToggleBookmark,
   recipes,
+  savedRecipeIds,
+  savingRecipeKeys,
   subtitle,
   title,
 }: {
   emptyMessage: string;
+  onToggleBookmark(recipe: RecipeSuggestion): Promise<void>;
   recipes: RecipeSuggestion[];
+  savedRecipeIds: Record<string, string>;
+  savingRecipeKeys: Set<string>;
   subtitle: string;
   title: string;
 }) {
@@ -328,85 +400,28 @@ function RecipeGroup({
       <Text style={styles.resultTitle}>{title}</Text>
       <Text style={styles.resultSubtitle}>{subtitle}</Text>
       {recipes.length > 0 ? (
-        recipes.map((recipe, index) => (
-          <RecipeCard key={`${recipe.title}-${index}`} recipe={recipe} />
-        ))
+        recipes.map((recipe, index) => {
+          const key = recipeIdentity(recipe);
+          return (
+            <RecipeCard
+              bookmarkState={
+                savingRecipeKeys.has(key)
+                  ? 'loading'
+                  : savedRecipeIds[key]
+                    ? 'saved'
+                    : 'idle'
+              }
+              key={`${recipe.title}-${index}`}
+              onBookmarkPress={() => void onToggleBookmark(recipe)}
+              recipe={recipe}
+            />
+          );
+        })
       ) : (
         <View style={styles.emptyResult}>
           <Text style={styles.emptyResultText}>{emptyMessage}</Text>
         </View>
       )}
-    </View>
-  );
-}
-
-function RecipeCard({ recipe }: { recipe: RecipeSuggestion }) {
-  return (
-    <View style={styles.recipeCard}>
-      <View style={styles.recipeHeader}>
-        <Text style={styles.recipeTitle}>{recipe.title}</Text>
-        <Text style={styles.recipeMeta}>{recipe.servings}인분 · 약 {recipe.cookingMinutes}분</Text>
-      </View>
-      <Text style={styles.recipeSummary}>{recipe.summary}</Text>
-
-      <RecipeSection title="사용할 재료">
-        {recipe.usedIngredients.map((ingredient, index) => (
-          <Text key={`${ingredient.name}-${index}`} style={styles.listText}>
-            • {ingredient.name} {ingredient.amount}
-          </Text>
-        ))}
-        {recipe.basicSeasonings.length > 0 && (
-          <Text style={styles.basicSeasoningText}>
-            기본 양념: {recipe.basicSeasonings.join(', ')}
-          </Text>
-        )}
-      </RecipeSection>
-
-      {recipe.missingIngredients.length > 0 && (
-        <View style={styles.missingSection}>
-          <Text style={styles.missingTitle}>추가로 필요한 재료</Text>
-          {recipe.missingIngredients.map((ingredient, index) => (
-            <Text key={`${ingredient.name}-${index}`} style={styles.missingText}>
-              + {ingredient.name} {ingredient.amount}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      <RecipeSection title="재료 손질">
-        {recipe.preparationSteps.map((step, index) => (
-          <Text key={`${step.ingredientName}-${index}`} style={styles.listText}>
-            • {step.ingredientName}: {step.instruction}
-          </Text>
-        ))}
-      </RecipeSection>
-
-      <RecipeSection title="조리 순서">
-        {recipe.cookingSteps.map((step, index) => (
-          <View key={`${index}-${step}`} style={styles.cookingStep}>
-            <View style={styles.stepNumber}><Text style={styles.stepNumberText}>{index + 1}</Text></View>
-            <Text style={styles.stepText}>{step}</Text>
-          </View>
-        ))}
-      </RecipeSection>
-
-      {recipe.safetyNotes.length > 0 && (
-        <View style={styles.safetySection}>
-          <Text style={styles.safetyTitle}>안전하게 조리하기</Text>
-          {recipe.safetyNotes.map((note, index) => (
-            <Text key={`${index}-${note}`} style={styles.safetyText}>• {note}</Text>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-function RecipeSection({ children, title }: { children: React.ReactNode; title: string }) {
-  return (
-    <View style={styles.recipeSection}>
-      <Text style={styles.recipeSectionTitle}>{title}</Text>
-      {children}
     </View>
   );
 }
@@ -480,24 +495,5 @@ const styles = StyleSheet.create({
   resultSubtitle: { color: colors.text.secondary, ...typography.caption, marginTop: -spacing.sm },
   emptyResult: { backgroundColor: colors.surfaceMuted, borderRadius: radii.large, padding: spacing.lg },
   emptyResultText: { color: colors.text.muted, ...typography.caption, textAlign: 'center' },
-  recipeCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.xlarge, borderWidth: 1, padding: spacing.xl },
-  recipeHeader: { gap: spacing.xs },
-  recipeTitle: { color: colors.text.primary, ...typography.title },
-  recipeMeta: { color: colors.brand.action, ...typography.caption, fontWeight: '700' },
-  recipeSummary: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
-  recipeSection: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: spacing.lg, paddingTop: spacing.lg },
-  recipeSectionTitle: { color: colors.text.primary, ...typography.label, marginBottom: spacing.sm },
-  listText: { color: colors.text.secondary, ...typography.caption, marginBottom: spacing.xs },
-  basicSeasoningText: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
-  missingSection: { backgroundColor: colors.warningSoft, borderRadius: radii.medium, marginTop: spacing.lg, padding: spacing.md },
-  missingTitle: { color: colors.warning, ...typography.label, marginBottom: spacing.xs },
-  missingText: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },
-  cookingStep: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  stepNumber: { alignItems: 'center', backgroundColor: colors.brand.soft, borderRadius: radii.full, height: 24, justifyContent: 'center', width: 24 },
-  stepNumberText: { color: colors.brand.action, fontSize: 12, fontWeight: '800' },
-  stepText: { color: colors.text.secondary, ...typography.caption, flex: 1 },
-  safetySection: { backgroundColor: colors.dangerSoft, borderRadius: radii.medium, marginTop: spacing.lg, padding: spacing.md },
-  safetyTitle: { color: colors.danger, ...typography.label, marginBottom: spacing.xs },
-  safetyText: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },
   aiNotice: { color: colors.text.muted, ...typography.caption, textAlign: 'center' },
 });

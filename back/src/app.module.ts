@@ -4,6 +4,7 @@ import { DatabaseModule } from './database/database.module';
 import { ExpirationItemsModule } from './expiration-items/expiration-items.module';
 import { ExpirationScansModule } from './expiration-scans/expiration-scans.module';
 import { RecipeSuggestionsModule } from './recipe-suggestions/recipe-suggestions.module';
+import { SavedRecipesModule } from './saved-recipes/saved-recipes.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { RecipeSuggestionsModule } from './recipe-suggestions/recipe-suggestions
     ExpirationScansModule,
     ExpirationItemsModule,
     RecipeSuggestionsModule,
+    SavedRecipesModule,
   ],
   controllers: [AppController],
 })

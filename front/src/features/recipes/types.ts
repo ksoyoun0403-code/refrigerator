@@ -27,6 +27,12 @@ export type RecipeSuggestionResult = {
   generatedAt: string;
 };
 
+export type SavedRecipe = {
+  id: string;
+  recipe: RecipeSuggestion;
+  createdAt: string;
+};
+
 export type GenerateRecipeSuggestions = {
   itemIds: string[];
   servings: number;

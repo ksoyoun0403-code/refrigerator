@@ -67,3 +67,16 @@ model ExpirationItem {
   @@index([section, sortOrder])
   @@map("expiration_items")
 }
+
+model SavedRecipe {
+  id              String   @id @default(uuid()) @db.Uuid
+  fingerprint     String   @unique @db.VarChar(64)
+  title           String   @db.VarChar(100)
+  ingredientNames String[]
+  recipe          Json     @db.JsonB
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([createdAt])
+  @@map("saved_recipes")
+}

@@ -99,7 +99,7 @@ function normalizeGroup(
   }
 
   return value
-    .map(parseRecipe)
+    .map(parseRecipeSuggestion)
     .filter((recipe): recipe is RecipeSuggestion => {
       if (!recipe) return false;
       if (recipe.servings !== options.servings) return false;
@@ -122,7 +122,7 @@ function normalizeGroup(
     .slice(0, MAX_RECIPES_PER_GROUP);
 }
 
-function parseRecipe(value: unknown): RecipeSuggestion | null {
+export function parseRecipeSuggestion(value: unknown): RecipeSuggestion | null {
   if (!isRecord(value)) return null;
 
   const title = readString(value.title);

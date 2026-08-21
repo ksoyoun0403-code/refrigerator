@@ -49,6 +49,8 @@
 - 추가 재료 1~3개로 만들 수 있는 레시피를 두 번째로 표시
 - 재료별 손질 방법, 조리 순서, 안전 주의사항 제공
 - OpenAI Responses API와 Structured Outputs 기반 응답 생성 및 Backend 의미 검증
+- 생성 레시피 북마크와 `MyRecipe` 영구 저장·삭제
+- 상단 `냉장고 · 레시피 생성 · MyRecipe` 탭 제공
 
 ### 후속 Phase
 
@@ -56,6 +58,7 @@
 2. 유통기한 및 구매일 기반 알림
 3. 식재료 검색과 필터
 4. 사용자 인증과 사용자별 냉장고 분리
+5. 닉네임 기반 레시피 공유 커뮤니티와 재료 검색 필터
 
 ## 실행
 
@@ -105,6 +108,9 @@ npm run start
 - `PATCH /v1/expiration-items/:id` — 식재료 정보 또는 냉장고 영역 수정
 - `DELETE /v1/expiration-items/:id`
 - `POST /v1/recipe-suggestions` — 선택한 냉장고 재료 기반 AI 레시피 생성
+- `GET /v1/saved-recipes` — MyRecipe 북마크 최신순 조회
+- `POST /v1/saved-recipes` — 생성 레시피 북마크 저장
+- `DELETE /v1/saved-recipes/:id` — 저장한 북마크 삭제
 
 ## 검증
 
@@ -123,4 +129,4 @@ npm run typecheck
 npm run build
 ```
 
-OCR 날짜 파서, 이미지 전처리, Google Cloud Vision 응답, AI 레시피 계약 및 PostgreSQL 통합 검증용 스크립트는 `back/package.json`에서 확인할 수 있습니다.
+OCR 날짜 파서, 이미지 전처리, Google Cloud Vision 응답, AI 레시피·북마크 계약 및 PostgreSQL 통합 검증용 스크립트는 `back/package.json`에서 확인할 수 있습니다.

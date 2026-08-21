@@ -1,16 +1,38 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, interaction, spacing, typography } from '../design-system/tokens';
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { colors, interaction, spacing } from '../design-system/tokens';
 import { ExpirationHomeScreen } from '../features/expiration/ExpirationHomeScreen';
+import { MyRecipeScreen } from '../features/recipes/MyRecipeScreen';
 import { RecipeSuggestionScreen } from '../features/recipes/RecipeSuggestionScreen';
 
-type MainTab = 'refrigerator' | 'recipes';
+type MainTab = 'refrigerator' | 'recipes' | 'my-recipes';
 
 export function MainTabNavigator() {
   const [activeTab, setActiveTab] = useState<MainTab>('refrigerator');
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
+      <View accessibilityRole="tablist" style={styles.tabBar}>
+        <TabButton
+          active={activeTab === 'refrigerator'}
+          label="냉장고"
+          marker="▦"
+          onPress={() => setActiveTab('refrigerator')}
+        />
+        <TabButton
+          active={activeTab === 'recipes'}
+          label="레시피 생성"
+          marker="✦"
+          onPress={() => setActiveTab('recipes')}
+        />
+        <TabButton
+          active={activeTab === 'my-recipes'}
+          label="MyRecipe"
+          marker="★"
+          onPress={() => setActiveTab('my-recipes')}
+        />
+      </View>
+
       <View
         accessibilityElementsHidden={activeTab !== 'refrigerator'}
         importantForAccessibility={
@@ -27,22 +49,16 @@ export function MainTabNavigator() {
       >
         <RecipeSuggestionScreen isActive={activeTab === 'recipes'} />
       </View>
-
-      <View accessibilityRole="tablist" style={styles.tabBar}>
-        <TabButton
-          active={activeTab === 'refrigerator'}
-          label="냉장고"
-          marker="▦"
-          onPress={() => setActiveTab('refrigerator')}
-        />
-        <TabButton
-          active={activeTab === 'recipes'}
-          label="AI 레시피"
-          marker="✦"
-          onPress={() => setActiveTab('recipes')}
-        />
+      <View
+        accessibilityElementsHidden={activeTab !== 'my-recipes'}
+        importantForAccessibility={
+          activeTab === 'my-recipes' ? 'auto' : 'no-hide-descendants'
+        }
+        style={[styles.screen, activeTab !== 'my-recipes' && styles.hiddenScreen]}
+      >
+        <MyRecipeScreen isActive={activeTab === 'my-recipes'} />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -80,26 +96,28 @@ const styles = StyleSheet.create({
   hiddenScreen: { display: 'none' },
   tabBar: {
     backgroundColor: colors.surface,
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
     flexDirection: 'row',
-    gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    gap: spacing.xs,
+    paddingBottom: spacing.xs,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
   },
   tabButton: {
     alignItems: 'center',
     borderRadius: 16,
+    flexDirection: 'row',
     flex: 1,
+    gap: spacing.xs,
     justifyContent: 'center',
-    minHeight: 56,
-    paddingHorizontal: spacing.md,
+    minHeight: 48,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
   },
   activeTabButton: { backgroundColor: colors.brand.soft },
-  tabMarker: { color: colors.text.muted, fontSize: 18, fontWeight: '800', lineHeight: 22 },
-  tabLabel: { color: colors.text.muted, ...typography.caption, fontWeight: '700' },
+  tabMarker: { color: colors.text.muted, fontSize: 15, fontWeight: '800', lineHeight: 20 },
+  tabLabel: { color: colors.text.muted, fontSize: 12, fontWeight: '700', lineHeight: 18 },
   activeTabText: { color: colors.brand.action },
   pressed: { opacity: interaction.pressedOpacity },
 });
