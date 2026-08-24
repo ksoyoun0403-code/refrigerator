@@ -90,12 +90,12 @@ function mapItem(item: {
 export class ExpirationItemsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
-    await this.promoteUseSoonItems();
+  async findAll(userId: string) {
+    await this.promoteUseSoonItems(userId);
 
     const [useSoonItems, defaultItems] = await Promise.all([
       this.prisma.client.expirationItem.findMany({
-        where: { section: 'USE_SOON' },
+        where: { userId, section: 'USE_SOON' },
         orderBy: [
           { expirationDate: { sort: 'asc', nulls: 'last' } },
           { purchasedAt: 'asc' },
@@ -103,7 +103,7 @@ export class ExpirationItemsService {
         ],
       }),
       this.prisma.client.expirationItem.findMany({
-        where: { section: 'DEFAULT' },
+        where: { userId, section: 'DEFAULT' },
         orderBy: [
           { expirationDate: { sort: 'asc', nulls: 'last' } },
           { purchasedAt: 'asc' },
@@ -114,7 +114,7 @@ export class ExpirationItemsService {
     return [...useSoonItems, ...defaultItems].map(mapItem);
   }
 
-  async create(input: CreateExpirationItem) {
+  async create(userId: string, input: CreateExpirationItem) {
     const normalized = this.validate(input);
 
     try {
@@ -125,17 +125,18 @@ export class ExpirationItemsService {
               ? 'USE_SOON'
               : 'DEFAULT';
             const lastPosition = await transaction.expirationItem.aggregate({
-              where: { section },
+              where: { userId, section },
               _max: { sortOrder: true },
             });
             const scan = await transaction.expirationScan.create({
-              data: { status: 'CONFIRMED' },
+              data: { status: 'CONFIRMED', userId },
               select: { id: true },
             });
 
             return transaction.expirationItem.create({
               data: {
                 scanId: scan.id,
+                userId,
                 name: normalized.name,
                 quantity: normalized.quantity,
                 unit: normalized.unit,
@@ -156,7 +157,7 @@ export class ExpirationItemsService {
 
       const item = await this.prisma.client.$transaction(async (transaction) => {
         const scan = await transaction.expirationScan.findUnique({
-          where: { id: normalized.scanId },
+          where: { id: normalized.scanId, userId },
         });
         if (!scan) {
           throw new NotFoundException('스캔 결과를 찾을 수 없습니다.');
@@ -167,6 +168,7 @@ export class ExpirationItemsService {
 
         const lastPosition = await transaction.expirationItem.aggregate({
           where: {
+            userId,
             section: shouldUseSoon(normalized.expirationDate)
               ? 'USE_SOON'
               : 'DEFAULT',
@@ -177,7 +179,7 @@ export class ExpirationItemsService {
           ? 'USE_SOON'
           : 'DEFAULT';
         const claimed = await transaction.expirationScan.updateMany({
-          where: { id: scan.id, status: 'NEEDS_REVIEW' },
+          where: { id: scan.id, userId, status: 'NEEDS_REVIEW' },
           data: { status: 'CONFIRMED' },
         });
         if (claimed.count !== 1) {
@@ -187,6 +189,7 @@ export class ExpirationItemsService {
         return transaction.expirationItem.create({
           data: {
             scanId: scan.id,
+            userId,
             name: normalized.name,
             quantity: normalized.quantity,
             unit: normalized.unit,
@@ -215,14 +218,14 @@ export class ExpirationItemsService {
     }
   }
 
-  async remove(id: string) {
+  async remove(userId: string, id: string) {
     if (!UUID_PATTERN.test(id)) {
       throw new BadRequestException('유효한 식재료 ID가 필요합니다.');
     }
 
     await this.prisma.client.$transaction(async (transaction) => {
-      const item = await transaction.expirationItem.findUnique({
-        where: { id },
+      const item = await transaction.expirationItem.findFirst({
+        where: { id, userId },
         select: { id: true, scanId: true },
       });
       if (!item) {
@@ -236,13 +239,13 @@ export class ExpirationItemsService {
     });
   }
 
-  async update(id: string, input: UpdateExpirationItem) {
+  async update(userId: string, id: string, input: UpdateExpirationItem) {
     this.validateId(id);
     const normalized = this.validateUpdate(input);
 
     const item = await this.prisma.client.$transaction(async (transaction) => {
-      const current = await transaction.expirationItem.findUnique({
-        where: { id },
+      const current = await transaction.expirationItem.findFirst({
+        where: { id, userId },
       });
       if (!current) {
         throw new NotFoundException('수정할 식재료를 찾을 수 없습니다.');
@@ -256,7 +259,7 @@ export class ExpirationItemsService {
           : normalized.section;
       if (section === 'USE_SOON' && current.section !== 'USE_SOON') {
         const lastPosition = await transaction.expirationItem.aggregate({
-          where: { section: 'USE_SOON' },
+          where: { userId, section: 'USE_SOON' },
           _max: { sortOrder: true },
         });
         sortOrder = (lastPosition._max.sortOrder ?? -1) + 1;
@@ -317,6 +320,9 @@ export class ExpirationItemsService {
     if (expirationDate && !isCalendarDate(expirationDate)) {
       throw new BadRequestException('유통기한은 YYYY-MM-DD 형식이어야 합니다.');
     }
+    if (expirationDate && expirationDate < todayInSeoul()) {
+      throw new BadRequestException('유통기한이 지난 상품입니다');
+    }
 
     return { scanId, name, quantity, unit, purchasedAt, expirationDate };
   }
@@ -364,6 +370,9 @@ export class ExpirationItemsService {
     if (expirationDate && !isCalendarDate(expirationDate)) {
       throw new BadRequestException('유통기한은 YYYY-MM-DD 형식이어야 합니다.');
     }
+    if (expirationDate && expirationDate < todayInSeoul()) {
+      throw new BadRequestException('유통기한이 지난 상품입니다');
+    }
     if (
       input.section !== undefined &&
       input.section !== 'DEFAULT' &&
@@ -389,9 +398,10 @@ export class ExpirationItemsService {
     }
   }
 
-  private async promoteUseSoonItems() {
+  private async promoteUseSoonItems(userId: string) {
     await this.prisma.client.expirationItem.updateMany({
       where: {
+        userId,
         section: 'DEFAULT',
         expirationDate: {
           lte: toDatabaseDate(addDays(todayInSeoul(), USE_SOON_DAYS)),

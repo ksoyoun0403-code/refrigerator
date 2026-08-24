@@ -23,10 +23,10 @@ export class RecipeSuggestionsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async generate(input: unknown): Promise<RecipeSuggestionResponse> {
+  async generate(userId: string, input: unknown): Promise<RecipeSuggestionResponse> {
     const request = validateRecipeSuggestionRequest(input);
     const items = await this.prisma.client.expirationItem.findMany({
-      where: { id: { in: request.itemIds } },
+      where: { userId, id: { in: request.itemIds } },
       select: {
         id: true,
         name: true,

@@ -2,10 +2,14 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ExpirationScansService } from './expiration-scans.service';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { AuthenticatedUser } from '../auth/auth.types';
 
 type UploadedImage = {
   buffer: Buffer;
@@ -14,6 +18,7 @@ type UploadedImage = {
 };
 
 @Controller('expiration-scans')
+@UseGuards(AuthGuard)
 export class ExpirationScansController {
   constructor(private readonly scansService: ExpirationScansService) {}
 
@@ -23,8 +28,12 @@ export class ExpirationScansController {
       limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     }),
   )
-  scan(@UploadedFile() image?: UploadedImage) {
+  scan(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() image?: UploadedImage,
+  ) {
     return this.scansService.scan(
+      user.id,
       image
         ? {
             bytes: image.buffer,

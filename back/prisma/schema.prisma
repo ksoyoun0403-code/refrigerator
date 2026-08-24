@@ -39,6 +39,8 @@ enum ExpirationItemSection {
 
 model ExpirationScan {
   id                       String               @id @default(uuid()) @db.Uuid
+  userId                   String               @db.Uuid
+  user                     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   status                   ExpirationScanStatus @default(PROCESSING)
   recognizedExpirationDate DateTime?            @db.Date
   confidence               Decimal?             @db.Decimal(5, 4)
@@ -46,11 +48,14 @@ model ExpirationScan {
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
+  @@index([userId, createdAt])
   @@map("expiration_scans")
 }
 
 model ExpirationItem {
   id             String                @id @default(uuid()) @db.Uuid
+  userId         String                @db.Uuid
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   scanId         String                @unique @db.Uuid
   scan           ExpirationScan        @relation(fields: [scanId], references: [id])
   name           String                @db.VarChar(100)
@@ -64,7 +69,7 @@ model ExpirationItem {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  @@index([section, sortOrder])
+  @@index([userId, section, sortOrder])
   @@map("expiration_items")
 }
 
@@ -79,4 +84,87 @@ model SavedRecipe {
 
   @@index([createdAt])
   @@map("saved_recipes")
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  loginId      String        @db.VarChar(30)
+  loginIdKey   String        @unique @db.VarChar(30)
+  nickname     String        @db.VarChar(20)
+  nicknameKey  String        @unique @db.VarChar(20)
+    passwordHash String        @db.VarChar(255)
+    authVersion  Int           @default(0)
+  sessions     AuthSession[]
+  scans        ExpirationScan[]
+  items        ExpirationItem[]
+  recipePosts  RecipePost[]
+  bookmarks    RecipeBookmark[]
+  recipeComments RecipeComment[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("users")
+}
+
+model RecipePost {
+  id              String           @id @default(uuid()) @db.Uuid
+  authorId        String           @db.Uuid
+  author          User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  fingerprint     String           @db.VarChar(64)
+  title           String           @db.VarChar(100)
+  summary         String           @db.VarChar(300)
+  ingredientNames String[]
+  recipe          Json             @db.JsonB
+  bookmarks       RecipeBookmark[]
+  comments        RecipeComment[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([authorId, fingerprint])
+  @@index([createdAt])
+  @@index([authorId, createdAt])
+  @@index([ingredientNames], type: Gin, map: "recipe_posts_ingredientNames_gin_idx")
+  @@map("recipe_posts")
+}
+
+model RecipeComment {
+  id           String     @id @default(uuid()) @db.Uuid
+  recipePostId String     @db.Uuid
+  authorId     String     @db.Uuid
+  recipePost   RecipePost @relation(fields: [recipePostId], references: [id], onDelete: Cascade)
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content      String     @db.VarChar(500)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([recipePostId, createdAt, id])
+  @@index([authorId, createdAt])
+  @@map("recipe_comments")
+}
+
+model RecipeBookmark {
+  userId       String     @db.Uuid
+  recipePostId String     @db.Uuid
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipePost   RecipePost @relation(fields: [recipePostId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, recipePostId])
+  @@index([recipePostId])
+  @@index([userId, createdAt])
+  @@map("recipe_bookmarks")
+}
+
+model AuthSession {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String   @unique @db.VarChar(64)
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
 }

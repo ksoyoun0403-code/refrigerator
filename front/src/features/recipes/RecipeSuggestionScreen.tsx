@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../design-system/Button';
 import {
   colors,
@@ -20,13 +21,8 @@ import {
 import { getExpirationItems } from '../expiration/expirationApi';
 import { ExpirationItem } from '../expiration/types';
 import { RecipeCard } from './RecipeCard';
+import { shareRecipePost } from './communityApi';
 import { generateRecipeSuggestions } from './recipeApi';
-import {
-  deleteSavedRecipe,
-  getSavedRecipes,
-  recipeIdentity,
-  saveRecipe,
-} from './savedRecipeApi';
 import { RecipeSuggestion, RecipeSuggestionResult } from './types';
 
 const SERVING_OPTIONS = [1, 2, 3, 4] as const;
@@ -35,9 +31,11 @@ const MAX_SELECTED_ITEMS = 12;
 
 type Props = {
   isActive: boolean;
+  nickname: string;
 };
 
-export function RecipeSuggestionScreen({ isActive }: Props) {
+export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
+  const itemsRequestId = useRef(0);
   const [items, setItems] = useState<ExpirationItem[]>([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [itemsLoadFailed, setItemsLoadFailed] = useState(false);
@@ -48,45 +46,46 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<RecipeSuggestionResult>();
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [savedRecipeIds, setSavedRecipeIds] = useState<Record<string, string>>({});
-  const [savingRecipeKeys, setSavingRecipeKeys] = useState<Set<string>>(new Set());
+  const [pendingShare, setPendingShare] = useState<RecipeSuggestion>();
+  const [sharedRecipeKeys, setSharedRecipeKeys] = useState<Set<string>>(new Set());
+  const [sharingRecipeKeys, setSharingRecipeKeys] = useState<Set<string>>(new Set());
 
   const loadItems = useCallback(async () => {
+    const requestId = ++itemsRequestId.current;
     setIsLoadingItems(true);
     setItemsLoadFailed(false);
+    setItems([]);
+    setSelectedIds(new Set());
+    setResult(undefined);
+    setErrorMessage(undefined);
     try {
       const loadedItems = await getExpirationItems();
-      const availableIds = new Set(loadedItems.map(({ id }) => id));
+      if (requestId !== itemsRequestId.current) return;
       setItems(loadedItems);
-      setSelectedIds((current) =>
-        new Set([...current].filter((id) => availableIds.has(id))),
-      );
     } catch {
+      if (requestId !== itemsRequestId.current) return;
+      setItems([]);
+      setSelectedIds(new Set());
       setItemsLoadFailed(true);
     } finally {
-      setIsLoadingItems(false);
-    }
-  }, []);
-
-  const loadSavedRecipeIds = useCallback(async () => {
-    try {
-      const savedRecipes = await getSavedRecipes();
-      setSavedRecipeIds(
-        Object.fromEntries(
-          savedRecipes.map(({ id, recipe }) => [recipeIdentity(recipe), id]),
-        ),
-      );
-    } catch {
-      // Bookmark actions still show their own error when the saved list is unavailable.
+      if (requestId === itemsRequestId.current) setIsLoadingItems(false);
     }
   }, []);
 
   useEffect(() => {
     if (isActive) {
       void loadItems();
-      void loadSavedRecipeIds();
+    } else {
+      itemsRequestId.current += 1;
+      setItems([]);
+      setSelectedIds(new Set());
+      setResult(undefined);
+      setErrorMessage(undefined);
+      setItemsLoadFailed(false);
+      setIsLoadingItems(false);
+      setPendingShare(undefined);
     }
-  }, [isActive, loadItems, loadSavedRecipeIds]);
+  }, [isActive, loadItems]);
 
   const toggleItem = (item: ExpirationItem) => {
     if (isGenerating) return;
@@ -135,34 +134,22 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
     }
   };
 
-  const toggleBookmark = async (recipe: RecipeSuggestion) => {
+  const confirmShare = async (recipe: RecipeSuggestion) => {
     const key = recipeIdentity(recipe);
-    if (savingRecipeKeys.has(key)) return;
-    setSavingRecipeKeys((current) => new Set(current).add(key));
+    if (sharingRecipeKeys.has(key)) return;
+    setSharingRecipeKeys((current) => new Set(current).add(key));
     try {
-      const savedId = savedRecipeIds[key];
-      if (savedId) {
-        await deleteSavedRecipe(savedId);
-        setSavedRecipeIds((current) => {
-          const next = { ...current };
-          delete next[key];
-          return next;
-        });
-      } else {
-        const saved = await saveRecipe(recipe);
-        setSavedRecipeIds((current) => ({
-          ...current,
-          [recipeIdentity(saved.recipe)]: saved.id,
-          [key]: saved.id,
-        }));
-      }
+      await shareRecipePost(recipe);
+      setSharedRecipeKeys((current) => new Set(current).add(key));
+      setPendingShare(undefined);
+      Alert.alert('공유 완료', '공유 레시피와 나의 요리책에 레시피가 등록됐어요.');
     } catch (error) {
       Alert.alert(
-        '북마크를 변경하지 못했어요',
+        '레시피를 공유하지 못했어요',
         error instanceof Error ? error.message : '잠시 후 다시 시도해주세요.',
       );
     } finally {
-      setSavingRecipeKeys((current) => {
+      setSharingRecipeKeys((current) => {
         const next = new Set(current);
         next.delete(key);
         return next;
@@ -171,12 +158,11 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.eyebrow}>MYDISH AI</Text>
         <Text style={styles.title}>어떤 재료로 요리할까요?</Text>
         <Text style={styles.description}>
           사용할 재료를 고르면 지금 바로 만들 수 있는 요리부터 알려드려요.
@@ -314,19 +300,19 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
           <View style={styles.results}>
             <RecipeGroup
               emptyMessage="선택한 재료만으로 만들 수 있는 레시피를 찾지 못했어요."
-              onToggleBookmark={toggleBookmark}
+              onShare={setPendingShare}
               recipes={result.availableOnly}
-              savedRecipeIds={savedRecipeIds}
-              savingRecipeKeys={savingRecipeKeys}
+              sharedRecipeKeys={sharedRecipeKeys}
+              sharingRecipeKeys={sharingRecipeKeys}
               subtitle="추가 장보기 없이 바로 만들 수 있어요."
               title="지금 있는 재료로 만들기"
             />
             <RecipeGroup
               emptyMessage="재료 1~3개를 더해 만들 수 있는 레시피를 찾지 못했어요."
-              onToggleBookmark={toggleBookmark}
+              onShare={setPendingShare}
               recipes={result.needsFewMore}
-              savedRecipeIds={savedRecipeIds}
-              savingRecipeKeys={savingRecipeKeys}
+              sharedRecipeKeys={sharedRecipeKeys}
+              sharingRecipeKeys={sharingRecipeKeys}
               subtitle="추가할 재료를 3개 이하로 제한했어요."
               title="조금만 추가해서 만들기"
             />
@@ -336,6 +322,13 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
           </View>
         )}
       </ScrollView>
+      <ShareConfirmation
+        nickname={nickname}
+        onCancel={() => setPendingShare(undefined)}
+        onConfirm={(recipe) => void confirmShare(recipe)}
+        recipe={pendingShare}
+        sharing={pendingShare ? sharingRecipeKeys.has(recipeIdentity(pendingShare)) : false}
+      />
     </SafeAreaView>
   );
 }
@@ -380,18 +373,18 @@ function OptionRow<T extends number>({
 
 function RecipeGroup({
   emptyMessage,
-  onToggleBookmark,
+  onShare,
   recipes,
-  savedRecipeIds,
-  savingRecipeKeys,
+  sharedRecipeKeys,
+  sharingRecipeKeys,
   subtitle,
   title,
 }: {
   emptyMessage: string;
-  onToggleBookmark(recipe: RecipeSuggestion): Promise<void>;
+  onShare(recipe: RecipeSuggestion): void;
   recipes: RecipeSuggestion[];
-  savedRecipeIds: Record<string, string>;
-  savingRecipeKeys: Set<string>;
+  sharedRecipeKeys: Set<string>;
+  sharingRecipeKeys: Set<string>;
   subtitle: string;
   title: string;
 }) {
@@ -403,18 +396,15 @@ function RecipeGroup({
         recipes.map((recipe, index) => {
           const key = recipeIdentity(recipe);
           return (
-            <RecipeCard
-              bookmarkState={
-                savingRecipeKeys.has(key)
-                  ? 'loading'
-                  : savedRecipeIds[key]
-                    ? 'saved'
-                    : 'idle'
-              }
-              key={`${recipe.title}-${index}`}
-              onBookmarkPress={() => void onToggleBookmark(recipe)}
-              recipe={recipe}
-            />
+            <View key={`${recipe.title}-${index}`} style={styles.shareRecipeBlock}>
+              <RecipeCard recipe={recipe} />
+              <Button
+                disabled={sharedRecipeKeys.has(key)}
+                label={sharedRecipeKeys.has(key) ? '공유 레시피에 등록됨' : '공유 레시피에 등록'}
+                loading={sharingRecipeKeys.has(key)}
+                onPress={() => onShare(recipe)}
+              />
+            </View>
           );
         })
       ) : (
@@ -424,6 +414,57 @@ function RecipeGroup({
       )}
     </View>
   );
+}
+
+function ShareConfirmation({
+  nickname,
+  onCancel,
+  onConfirm,
+  recipe,
+  sharing,
+}: {
+  nickname: string;
+  onCancel(): void;
+  onConfirm(recipe: RecipeSuggestion): void;
+  recipe?: RecipeSuggestion;
+  sharing: boolean;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={Boolean(recipe)}>
+      <View style={styles.modalBackdrop}>
+        {recipe && (
+          <View style={styles.shareModal}>
+            <Text style={styles.shareModalEyebrow}>COMMUNITY SHARE</Text>
+            <Text style={styles.shareModalTitle}>이 레시피를 공유할까요?</Text>
+            <Text style={styles.shareNotice}>아래 정보가 모든 사용자에게 공개됩니다.</Text>
+            <View style={styles.shareInfoBox}>
+              <Text style={styles.shareInfoLabel}>작성자 닉네임</Text>
+              <Text style={styles.shareInfoValue}>@{nickname}</Text>
+              <Text style={styles.shareInfoLabel}>레시피 이름</Text>
+              <Text style={styles.shareInfoValue}>{recipe.title}</Text>
+              <Text style={styles.shareInfoLabel}>공개 재료</Text>
+              <Text style={styles.shareInfoValue}>{recipeIngredientNames(recipe).join(' · ')}</Text>
+            </View>
+            <View style={styles.shareActions}>
+              <Button disabled={sharing} label="취소" onPress={onCancel} style={styles.shareAction} variant="secondary" />
+              <Button label="공유하기" loading={sharing} onPress={() => onConfirm(recipe)} style={styles.shareAction} />
+            </View>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+function recipeIdentity(recipe: RecipeSuggestion) {
+  return JSON.stringify(recipe);
+}
+
+function recipeIngredientNames(recipe: RecipeSuggestion) {
+  return [...new Set([
+    ...recipe.usedIngredients.map(({ name }) => name.trim()),
+    ...recipe.missingIngredients.map(({ name }) => name.trim()),
+  ].filter(Boolean))];
 }
 
 function unitLabel(unit: ExpirationItem['unit']) {
@@ -443,8 +484,7 @@ function unitLabel(unit: ExpirationItem['unit']) {
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.canvas, flex: 1 },
-  container: { padding: spacing.xxl, paddingBottom: spacing.giant },
-  eyebrow: { color: colors.brand.action, ...typography.caption, fontWeight: '800', letterSpacing: 1.6, marginTop: spacing.lg },
+  container: { padding: spacing.xl, paddingBottom: spacing.giant },
   title: { color: colors.text.primary, ...typography.heading1, marginTop: spacing.xs },
   description: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
   selectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md, marginTop: spacing.xxxl },
@@ -490,9 +530,20 @@ const styles = StyleSheet.create({
   errorTitle: { color: colors.danger, ...typography.bodyStrong },
   errorDescription: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },
   results: { gap: spacing.xxxl, marginTop: spacing.huge },
+  shareRecipeBlock: { gap: spacing.md },
   recipeGroup: { gap: spacing.md },
   resultTitle: { color: colors.text.primary, ...typography.heading2 },
   resultSubtitle: { color: colors.text.secondary, ...typography.caption, marginTop: -spacing.sm },
+  modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(43, 27, 21, 0.5)', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  shareModal: { backgroundColor: colors.surface, borderRadius: radii.xlarge, maxWidth: 520, padding: spacing.xl, width: '100%' },
+  shareModalEyebrow: { color: colors.brand.action, ...typography.caption, fontWeight: '800', letterSpacing: 1.2 },
+  shareModalTitle: { color: colors.text.primary, ...typography.heading2, marginTop: spacing.xs },
+  shareNotice: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
+  shareInfoBox: { backgroundColor: colors.surfaceMuted, borderRadius: radii.large, gap: spacing.xs, marginTop: spacing.lg, padding: spacing.lg },
+  shareInfoLabel: { color: colors.text.muted, ...typography.caption, marginTop: spacing.sm },
+  shareInfoValue: { color: colors.text.primary, ...typography.bodyStrong },
+  shareActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  shareAction: { flex: 1 },
   emptyResult: { backgroundColor: colors.surfaceMuted, borderRadius: radii.large, padding: spacing.lg },
   emptyResultText: { color: colors.text.muted, ...typography.caption, textAlign: 'center' },
   aiNotice: { color: colors.text.muted, ...typography.caption, textAlign: 'center' },

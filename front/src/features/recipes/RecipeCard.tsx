@@ -1,6 +1,9 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, interaction, radii, spacing, typography } from '../../design-system/tokens';
 import { RecipeSuggestion } from './types';
+
+const bookmarkIcon = require('../../../assets/icons/bookmark.png');
+const bookmarkFilledIcon = require('../../../assets/icons/bookmark-filled.png');
 
 type Props = {
   bookmarkState?: 'idle' | 'saved' | 'loading';
@@ -48,9 +51,11 @@ export function RecipeCard({
               <ActivityIndicator color={colors.brand.action} size="small" />
             ) : (
               <>
-                <Text style={[styles.bookmarkIcon, isSaved && styles.bookmarkTextSaved]}>
-                  {isSaved ? '★' : '☆'}
-                </Text>
+                <Image
+                  resizeMode="contain"
+                  source={isSaved ? bookmarkFilledIcon : bookmarkIcon}
+                  style={[styles.bookmarkIcon, { tintColor: isSaved ? colors.brand.action : colors.text.secondary }]}
+                />
                 <Text style={[styles.bookmarkLabel, isSaved && styles.bookmarkTextSaved]}>
                   {isSaved ? '저장됨' : '저장'}
                 </Text>
@@ -143,7 +148,7 @@ const styles = StyleSheet.create({
   savedAt: { color: colors.text.muted, ...typography.caption },
   bookmarkButton: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.medium, borderWidth: 1, justifyContent: 'center', minHeight: interaction.minimumTouchSize, minWidth: 58, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   bookmarkButtonSaved: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary },
-  bookmarkIcon: { color: colors.text.secondary, fontSize: 18, lineHeight: 20 },
+  bookmarkIcon: { height: 22, width: 18 },
   bookmarkLabel: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
   bookmarkTextSaved: { color: colors.brand.action },
   pressed: { opacity: interaction.pressedOpacity },

@@ -1,5 +1,5 @@
-import { fetch } from 'expo/fetch';
 import { File } from 'expo-file-system';
+import { authenticatedFetch } from '../auth/authenticatedFetch';
 import {
   CreateExpirationItem,
   ExpirationItem,
@@ -22,7 +22,7 @@ function getConnectionErrorMessage() {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, init);
+    response = await authenticatedFetch(`${API_BASE_URL}${path}`, init);
   } catch {
     throw new Error(getConnectionErrorMessage());
   }

@@ -16,6 +16,7 @@ import { ExpirationItem, ExpirationScanResult, LocalImage } from './types';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
+const expirationCameraIcon = require('../../../assets/icons/expiration-camera.png');
 
 type Props = {
   onRegistered(item: ExpirationItem): void | Promise<void>;
@@ -104,15 +105,17 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   const registered = async (item: ExpirationItem) => {
     await onRegistered(item);
     reset();
-    Alert.alert('재료 추가 성공!', `${item.name}이(가) 냉장고 목록에 추가됐어요.`);
   };
 
   if (!image) {
     return (
       <Button
-        label="추가"
+        accessibilityHint="카메라로 촬영하거나 앨범에서 유통기한 사진을 선택합니다."
+        iconSource={expirationCameraIcon}
+        iconTintColor={colors.text.inverse}
+        label="유통기한 촬영"
         onPress={openImageSource}
-        style={styles.primaryButton}
+        style={styles.captureButton}
       />
     );
   }
@@ -207,6 +210,7 @@ const styles = StyleSheet.create({
   secondaryAction: { color: colors.brand.action, ...typography.label },
   removeAction: { color: colors.danger, ...typography.label },
   primaryButton: { marginTop: spacing.xl, minHeight: 56, width: '100%' },
+  captureButton: { borderRadius: radii.large, marginTop: spacing.xl, minHeight: 64, width: '100%' },
   errorCard: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderRadius: radii.large, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
   errorTitle: { color: colors.danger, ...typography.bodyStrong },
   errorDescription: { color: colors.text.secondary, ...typography.label, fontWeight: '400', marginTop: spacing.xs },
