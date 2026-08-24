@@ -6,6 +6,7 @@ import { RecipeCard } from './RecipeCard';
 import { RecipeComments } from './RecipeComments';
 import { bookmarkRecipePost, deleteRecipePost, getBookmarkedRecipePosts, getMyRecipePosts, getRecipePost, getRecipePosts, removeRecipePostBookmark } from './communityApi';
 import { RecipePost, RecipePostListItem } from './types';
+import { getExpirationItems } from '../expiration/expirationApi';
 
 const bookmarkIcon = require('../../../assets/icons/bookmark.png');
 const backIcon = require('../../../assets/icons/back.png');
@@ -27,6 +28,16 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [inventoryNames, setInventoryNames] = useState<Set<string>>();
+
+  const loadInventoryNames = useCallback(async () => {
+    try {
+      const items = await getExpirationItems();
+      setInventoryNames(new Set(items.map((item) => normalizeIngredientName(item.name))));
+    } catch {
+      setInventoryNames(undefined);
+    }
+  }, []);
 
   const loadPosts = useCallback(async (search = appliedQuery) => {
     const currentRequest = ++requestId.current;
@@ -48,6 +59,11 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
     if (isActive) void loadPosts();
     else requestId.current += 1;
   }, [isActive, loadPosts]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    void loadInventoryNames();
+  }, [isActive, loadInventoryNames]);
 
   useEffect(() => {
     setSelectedPost(undefined);
@@ -118,6 +134,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
         <RecipeCard
           bookmarkState={isBookmarking ? 'loading' : selectedPost.isBookmarked ? 'saved' : 'idle'}
           onBookmarkPress={selectedPost.isOwn ? undefined : () => void toggleBookmark()}
+          onIngredientsConsumed={() => void loadInventoryNames()}
           recipe={selectedPost.recipe}
         />
         <Text style={styles.bookmarkCount}>북마크 {selectedPost.bookmarkCount}회</Text>
@@ -134,7 +151,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
   }
 
   if (view === 'cookbook') {
-    return <CookbookScreen isActive={isActive} onOpenPost={(id) => void openPost(id)} />;
+    return <CookbookScreen inventoryNames={inventoryNames} isActive={isActive} onOpenPost={(id) => void openPost(id)} />;
   }
 
   return (
@@ -191,6 +208,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
               </View>
               <Text style={styles.postTitle}>{post.title}</Text>
               <Text numberOfLines={2} style={styles.ingredients}>{post.ingredientNames.join(' · ')}</Text>
+              {inventoryNames && <IngredientAvailabilityBadge ingredientNames={post.ingredientNames} inventoryNames={inventoryNames} />}
               <Text style={styles.openLabel}>전체 레시피 보기 →</Text>
             </Pressable>
           ))}
@@ -200,7 +218,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
   );
 }
 
-function CookbookScreen({ isActive, onOpenPost }: { isActive: boolean; onOpenPost(id: string): void }) {
+function CookbookScreen({ inventoryNames, isActive, onOpenPost }: { inventoryNames?: Set<string>; isActive: boolean; onOpenPost(id: string): void }) {
   const [section, setSection] = useState<'mine' | 'bookmarked'>('mine');
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
@@ -326,7 +344,8 @@ function CookbookScreen({ isActive, onOpenPost }: { isActive: boolean; onOpenPos
                 <Text style={styles.postAuthor}>@{post.author.nickname}</Text>
                 <Text style={styles.postTitle}>{post.title}</Text>
                 <Text numberOfLines={2} style={styles.ingredients}>{post.ingredientNames.join(' · ')}</Text>
-                <View style={styles.postMetrics}>
+                {inventoryNames && <IngredientAvailabilityBadge ingredientNames={post.ingredientNames} inventoryNames={inventoryNames} />}
+                <View style={[styles.postMetrics, styles.cookbookMetrics]}>
                   <Text style={styles.postComment}>댓글 {post.commentCount}</Text>
                   <View style={styles.postBookmarkMetric}>
                     <Image resizeMode="contain" source={bookmarkIcon} style={styles.postBookmarkIcon} />
@@ -347,6 +366,25 @@ function CookbookScreen({ isActive, onOpenPost }: { isActive: boolean; onOpenPos
       )}
     </ScrollView>
   );
+}
+
+function IngredientAvailabilityBadge({ ingredientNames, inventoryNames }: { ingredientNames: string[]; inventoryNames: Set<string> }) {
+  const uniqueIngredients = [...new Set(ingredientNames.map(normalizeIngredientName).filter(Boolean))];
+  const owned = uniqueIngredients.filter((name) => inventoryNames.has(name)).length;
+  const total = uniqueIngredients.length;
+  const complete = total > 0 && owned === total;
+  const none = owned === 0;
+  return (
+    <View style={[styles.availabilityBadge, complete ? styles.availabilityComplete : none ? styles.availabilityNone : styles.availabilityPartial]}>
+      <Text style={[styles.availabilityText, complete ? styles.availabilityCompleteText : none ? styles.availabilityNoneText : styles.availabilityPartialText]}>
+        {complete ? '모든 재료 보유' : `보유 재료 ${owned}/${total}`}
+      </Text>
+    </View>
+  );
+}
+
+function normalizeIngredientName(value: string) {
+  return value.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
 }
 
 const styles = StyleSheet.create({
@@ -370,6 +408,7 @@ const styles = StyleSheet.create({
   postCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.xlarge, borderWidth: 1, padding: spacing.xl },
   postHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   postMetrics: { flexDirection: 'row', gap: spacing.md },
+  cookbookMetrics: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: spacing.md, paddingTop: spacing.md },
   postComment: { color: colors.text.muted, ...typography.label },
   postBookmarkMetric: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
   postBookmarkIcon: { height: 16, tintColor: colors.text.secondary, width: 13 },
@@ -377,6 +416,14 @@ const styles = StyleSheet.create({
   postBookmark: { color: colors.text.secondary, ...typography.label },
   postTitle: { color: colors.text.primary, ...typography.title, marginTop: spacing.md },
   ingredients: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
+  availabilityBadge: { alignSelf: 'flex-start', borderRadius: radii.full, marginTop: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  availabilityComplete: { backgroundColor: colors.successSoft },
+  availabilityPartial: { backgroundColor: colors.brand.soft },
+  availabilityNone: { backgroundColor: colors.surfaceMuted },
+  availabilityText: { ...typography.caption, fontWeight: '800' },
+  availabilityCompleteText: { color: colors.success },
+  availabilityPartialText: { color: colors.brand.action },
+  availabilityNoneText: { color: colors.text.muted },
   openLabel: { color: colors.brand.action, ...typography.label, marginTop: spacing.lg },
   stateBox: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.xlarge, borderWidth: 1, gap: spacing.md, marginTop: spacing.xl, padding: spacing.xxl },
   stateTitle: { color: colors.text.primary, ...typography.title, textAlign: 'center' },

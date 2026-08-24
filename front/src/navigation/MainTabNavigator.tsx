@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Notifications from 'expo-notifications';
-import { BackHandler, Image, ImageSourcePropType, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { BackHandler, Image, ImageSourcePropType, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, interaction, spacing } from '../design-system/tokens';
 import { ExpirationHomeScreen } from '../features/expiration/ExpirationHomeScreen';
@@ -23,6 +23,8 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
   onUpdateNickname(nickname: string): Promise<void>;
   user: AuthUser;
 }) {
+  const { width } = useWindowDimensions();
+  const isCompactWidth = width < 480;
   const [activeTab, setActiveTab] = useState<MainTab>('refrigerator');
   const [communityView, setCommunityView] = useState<'feed' | 'cookbook'>('feed');
   const [history, setHistory] = useState<Destination[]>([]);
@@ -81,14 +83,14 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.accountBar}>
+      <View style={[styles.accountBar, isCompactWidth && styles.compactAccountBar]}>
         <Pressable
           accessibilityLabel="이전 화면으로"
           accessibilityRole="button"
           accessibilityState={{ disabled: !canGoBack }}
           disabled={!canGoBack}
           onPress={goBack}
-          style={[styles.backButton, !canGoBack && styles.backButtonDisabled]}
+          style={[styles.backButton, isCompactWidth && styles.compactSideButton, !canGoBack && styles.backButtonDisabled]}
         >
           <Image resizeMode="contain" source={backIcon} style={styles.backIcon} />
           <Text style={styles.backText}>뒤로</Text>
@@ -101,30 +103,33 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
               setIsMyPageOpen(false);
               navigate({ tab: 'refrigerator', communityView });
             }}
-            style={({ pressed }) => [styles.headerLogoFrame, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.headerLogoFrame, isCompactWidth && styles.compactHeaderLogoFrame, pressed && styles.pressed]}
           >
-            <Image accessibilityLabel="MYDISH" resizeMode="contain" source={mydishWordmark} style={styles.headerLogo} />
+            <Image accessibilityLabel="MYDISH" resizeMode="contain" source={mydishWordmark} style={[styles.headerLogo, isCompactWidth && styles.compactHeaderLogo]} />
           </Pressable>
         </View>
-        <Pressable accessibilityRole="button" disabled={isMyPageOpen} onPress={() => setIsMyPageOpen(true)} style={[styles.myPageButton, isMyPageOpen && styles.backButtonDisabled]}>
+        <Pressable accessibilityRole="button" disabled={isMyPageOpen} onPress={() => setIsMyPageOpen(true)} style={[styles.myPageButton, isCompactWidth && styles.compactSideButton, isMyPageOpen && styles.backButtonDisabled]}>
           <Text style={styles.myPageText}>My Page</Text>
         </Pressable>
       </View>
       {!isMyPageOpen && <View accessibilityRole="tablist" style={styles.tabBar}>
         <TabButton
           active={activeTab === 'refrigerator'}
+          compact={isCompactWidth}
           label="냉장고"
           iconSource={refrigeratorIcon}
           onPress={() => navigate({ tab: 'refrigerator', communityView })}
         />
         <TabButton
           active={activeTab === 'recipes'}
-          label="레시피 생성"
+          compact={isCompactWidth}
+          label="AI 레시피 생성"
           iconSource={recipeGenerateIcon}
           onPress={() => navigate({ tab: 'recipes', communityView })}
         />
         <TabButton
           active={activeTab === 'community' && communityView === 'feed'}
+          compact={isCompactWidth}
           label="공유 레시피"
           iconSource={sharedRecipesIcon}
           onPress={() => {
@@ -258,11 +263,13 @@ function PasswordField({ label, onChangeText, value }: { label: string; onChange
 
 function TabButton({
   active,
+  compact,
   iconSource,
   label,
   onPress,
 }: {
   active: boolean;
+  compact: boolean;
   iconSource: ImageSourcePropType;
   label: string;
   onPress(): void;
@@ -274,12 +281,13 @@ function TabButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.tabButton,
+        compact && styles.compactTabButton,
         active && styles.activeTabButton,
         pressed && styles.pressed,
       ]}
     >
       <Image resizeMode="contain" source={iconSource} style={[styles.tabIcon, { tintColor: active ? colors.brand.action : colors.text.muted }]} />
-      <Text style={[styles.tabLabel, active && styles.activeTabText]}>{label}</Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.75} numberOfLines={1} style={[styles.tabLabel, compact && styles.compactTabLabel, active && styles.activeTabText]}>{label}</Text>
     </Pressable>
   );
 }
@@ -287,15 +295,19 @@ function TabButton({
 const styles = StyleSheet.create({
   root: { backgroundColor: colors.canvas, flex: 1 },
   accountBar: { alignItems: 'center', backgroundColor: colors.surface, flexDirection: 'row', minHeight: 64, paddingHorizontal: spacing.md, position: 'relative' },
+  compactAccountBar: { paddingHorizontal: spacing.sm },
   headerLogoContainer: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 },
   headerLogoFrame: { alignItems: 'center', height: 40, justifyContent: 'center', overflow: 'hidden', width: 140 },
   headerLogo: { height: 110, width: 220 },
+  compactHeaderLogoFrame: { height: 36, width: 112 },
+  compactHeaderLogo: { height: 36, width: 112 },
   backButton: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 48, minWidth: 76 },
   backIcon: { height: 14, tintColor: colors.brand.action, width: 9 },
   backButtonDisabled: { opacity: 0.25 },
   backText: { color: colors.brand.action, fontSize: 14, fontWeight: '800' },
   myPageButton: { alignItems: 'flex-end', justifyContent: 'center', marginLeft: 'auto', minHeight: 48, minWidth: 76 },
   myPageText: { color: colors.brand.action, fontSize: 14, fontWeight: '800' },
+  compactSideButton: { minWidth: 64 },
   screen: { flex: 1 },
   hiddenScreen: { display: 'none' },
   tabBar: {
@@ -319,9 +331,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
   },
+  compactTabButton: { flexDirection: 'column', gap: 0, minHeight: 56, paddingHorizontal: 2 },
   activeTabButton: { backgroundColor: colors.brand.soft },
   tabIcon: { height: 20, width: 20 },
   tabLabel: { color: colors.text.muted, fontSize: 12, fontWeight: '700', lineHeight: 18 },
+  compactTabLabel: { fontSize: 11, lineHeight: 15, maxWidth: '100%', textAlign: 'center' },
   activeTabText: { color: colors.brand.action },
   pressed: { opacity: interaction.pressedOpacity },
   modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(43, 27, 21, 0.5)', flex: 1, justifyContent: 'center', padding: spacing.xl },

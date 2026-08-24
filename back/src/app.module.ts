@@ -8,6 +8,7 @@ import { SavedRecipesModule } from './saved-recipes/saved-recipes.module';
 import { AuthModule } from './auth/auth.module';
 import { RecipePostsModule } from './recipe-posts/recipe-posts.module';
 import { RecipeCommentsModule } from './recipe-comments/recipe-comments.module';
+import { RecipeConsumptionsModule } from './recipe-consumptions/recipe-consumptions.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { RecipeCommentsModule } from './recipe-comments/recipe-comments.module';
     SavedRecipesModule,
     RecipePostsModule,
     RecipeCommentsModule,
+    RecipeConsumptionsModule,
   ],
   controllers: [AppController],
 })

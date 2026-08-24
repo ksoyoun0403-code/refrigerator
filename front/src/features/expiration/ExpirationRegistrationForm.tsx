@@ -57,7 +57,9 @@ type EditProps = {
   onCancel(): void;
 };
 
-type Props = RegistrationProps | ManualRegistrationProps | EditProps;
+type Props = (RegistrationProps | ManualRegistrationProps | EditProps) & {
+  onFieldFocus?(field: 'name' | 'quantity' | 'expirationDate' | 'purchasedAt'): void;
+};
 
 export function ExpirationRegistrationForm(props: Props) {
   const editingItem = props.item;
@@ -161,6 +163,7 @@ export function ExpirationRegistrationForm(props: Props) {
         editable={!isSaving}
         maxLength={100}
         onChangeText={setName}
+        onFocus={() => props.onFieldFocus?.('name')}
         placeholder="예: 토마토"
         placeholderTextColor={colors.text.muted}
         selectionColor={colors.brand.primary}
@@ -174,6 +177,7 @@ export function ExpirationRegistrationForm(props: Props) {
           keyboardType="decimal-pad"
           maxLength={10}
           onChangeText={setQuantity}
+          onFocus={() => props.onFieldFocus?.('quantity')}
           selectionColor={colors.brand.primary}
           style={[styles.input, styles.quantityInput]}
           value={quantity}
@@ -231,6 +235,7 @@ export function ExpirationRegistrationForm(props: Props) {
         onChangeText={(value) =>
           setExpirationDate(formatExpirationDateInput(value))
         }
+        onFocus={() => props.onFieldFocus?.('expirationDate')}
         placeholder="YYYYMMDD (예: 20261201)"
         placeholderTextColor={colors.text.muted}
         selectionColor={colors.brand.primary}
@@ -245,6 +250,7 @@ export function ExpirationRegistrationForm(props: Props) {
             editable={!isSaving}
             maxLength={10}
             onChangeText={setPurchasedAt}
+            onFocus={() => props.onFieldFocus?.('purchasedAt')}
             placeholder="YYYY-MM-DD"
             placeholderTextColor={colors.text.muted}
             selectionColor={colors.brand.primary}
@@ -270,10 +276,9 @@ export function ExpirationRegistrationForm(props: Props) {
           label={editingItem ? '수정 내용 저장' : '냉장고에 등록'}
           loading={isSaving}
           onPress={() => void save()}
-          style={[
-            styles.saveButton,
-            editingItem && styles.editSaveButton,
-          ]}
+          style={editingItem || props.manual
+            ? [styles.saveButton, editingItem && styles.editSaveButton]
+            : styles.registrationSaveButton}
         />
       </View>
     </View>
@@ -317,4 +322,5 @@ const styles = StyleSheet.create({
   cancelButton: { flex: 0.8 },
   saveButton: { flex: 1 },
   editSaveButton: { flex: 1.2 },
+  registrationSaveButton: { marginTop: spacing.xl, width: '100%' },
 });

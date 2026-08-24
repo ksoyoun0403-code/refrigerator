@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -58,6 +60,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
   requestedItemId?: string;
   userId: string;
 }) {
+  const scrollViewRef = useRef<ScrollView>(null);
   const [items, setItems] = useState<ExpirationItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<ExpirationItem>();
   const [isLoading, setIsLoading] = useState(true);
@@ -328,17 +331,32 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
     Alert.alert('수정 완료', `${updatedItem.name} 정보를 수정했습니다.`);
   };
 
+  const keepFocusedFieldAboveKeyboard = (
+    field: 'name' | 'quantity' | 'expirationDate' | 'purchasedAt',
+  ) => {
+    const editOffsets = { name: 0, quantity: 140, expirationDate: 320, purchasedAt: 470 };
+    const registrationOffsets = { name: 800, quantity: 950, expirationDate: 1130, purchasedAt: 1280 };
+    const targetOffset = selectedItem ? editOffsets[field] : registrationOffsets[field];
+
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ animated: true, y: targetOffset });
+    }, 250);
+  };
+
   if (selectedItem) {
     return (
       <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.editContainer} keyboardShouldPersistTaps="handled">
-          <Text style={styles.editPageTitle}>식재료 정보</Text>
-          <ExpirationRegistrationForm
-            item={selectedItem}
-            onCancel={() => setSelectedItem(undefined)}
-            onUpdated={itemUpdated}
-          />
-        </ScrollView>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoidingView}>
+          <ScrollView ref={scrollViewRef} contentContainerStyle={styles.editContainer} keyboardShouldPersistTaps="handled">
+            <Text style={styles.editPageTitle}>식재료 정보</Text>
+            <ExpirationRegistrationForm
+              item={selectedItem}
+              onCancel={() => setSelectedItem(undefined)}
+              onFieldFocus={keepFocusedFieldAboveKeyboard}
+              onUpdated={itemUpdated}
+            />
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -350,7 +368,9 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
 
   return (
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoidingView}>
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={[
           styles.container,
           manageMode === 'editing' && styles.containerWithSelectionBar,
@@ -431,6 +451,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
           <ExpirationRegistrationForm
             manual
             onCancel={() => setIsManualFormOpen(false)}
+            onFieldFocus={keepFocusedFieldAboveKeyboard}
             onRegistered={itemRegistered}
           />
         ) : (
@@ -559,6 +580,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
         feedback={registrationFeedback}
         onClose={() => setRegistrationFeedback(undefined)}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -846,6 +868,7 @@ function sortItemsForDisplay(items: ExpirationItem[]) {
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.canvas, flex: 1 },
+  keyboardAvoidingView: { flex: 1 },
   container: { padding: spacing.xl, paddingBottom: spacing.giant },
   containerWithSelectionBar: { paddingBottom: 160 },
   editContainer: { padding: spacing.xxl, paddingBottom: spacing.giant },
@@ -910,16 +933,16 @@ const styles = StyleSheet.create({
   groupTitle: { color: colors.text.secondary, ...typography.label, fontWeight: '800', marginBottom: spacing.xs },
   emptyDropZone: { alignItems: 'center', backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong, borderRadius: radii.large, borderStyle: 'dashed', borderWidth: 1, padding: spacing.xl },
   emptyDropText: { color: colors.text.muted, ...typography.caption, fontWeight: '600' },
-  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  itemCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, justifyContent: 'space-between', minHeight: 108, padding: spacing.lg, width: '48%' },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  itemCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, justifyContent: 'space-between', minHeight: 88, padding: spacing.md, width: '48.5%' },
   expiredItemCard: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong },
-  itemCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 15 },
+  itemCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 11 },
   itemCardPressed: { opacity: interaction.pressedOpacity },
-  itemName: { color: colors.text.primary, fontSize: 16, fontWeight: '800', lineHeight: 22, paddingRight: spacing.xxl },
+  itemName: { color: colors.text.primary, fontSize: 15, fontWeight: '800', lineHeight: 20, paddingRight: spacing.xxl },
   expiredItemText: { color: colors.text.muted },
   discardBadge: { alignSelf: 'flex-start', backgroundColor: colors.border, borderRadius: radii.full, marginBottom: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   discardBadgeText: { color: colors.text.secondary, fontSize: 12, fontWeight: '800' },
-  itemDate: { color: colors.text.secondary, ...typography.label, marginTop: spacing.lg },
+  itemDate: { color: colors.text.secondary, ...typography.caption, fontWeight: '700', marginTop: spacing.sm },
   missingDate: { color: colors.text.muted, fontWeight: '600' },
   selectionIndicator: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1.5, height: 24, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 24 },
   selectionIndicatorSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },

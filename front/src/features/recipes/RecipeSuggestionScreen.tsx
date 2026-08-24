@@ -23,7 +23,7 @@ import { ExpirationItem } from '../expiration/types';
 import { RecipeCard } from './RecipeCard';
 import { shareRecipePost } from './communityApi';
 import { generateRecipeSuggestions } from './recipeApi';
-import { RecipeSuggestion, RecipeSuggestionResult } from './types';
+import { RecipeConsumptionResult, RecipeSuggestion, RecipeSuggestionResult } from './types';
 
 const SERVING_OPTIONS = [1, 2, 3, 4] as const;
 const COOKING_TIME_OPTIONS = [20, 30, 45, 60] as const;
@@ -107,6 +107,16 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
     });
     setResult(undefined);
     setErrorMessage(undefined);
+  };
+
+  const ingredientsConsumed = (consumption: RecipeConsumptionResult) => {
+    const updates = new Map(consumption.updatedItems.map((item) => [item.id, item]));
+    setItems((current) => current.flatMap((item) => {
+      const update = updates.get(item.id);
+      if (!update) return [item];
+      return update.removed ? [] : [{ ...item, quantity: update.quantity }];
+    }));
+    setSelectedIds((current) => new Set([...current].filter((id) => !updates.get(id)?.removed)));
   };
 
   const generate = async () => {
@@ -283,7 +293,7 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
             <View style={styles.generatingCopy}>
               <Text style={styles.generatingTitle}>AI 레시피 생성 중</Text>
               <Text style={styles.generatingDescription}>
-                선택한 재료를 분석하고 있어요. 약 30초 정도 걸릴 수 있어요.
+                선택한 재료를 분석하고 있어요. 약 1분 정도 걸릴 수 있어요.
               </Text>
             </View>
           </View>
@@ -301,6 +311,7 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
             <RecipeGroup
               emptyMessage="선택한 재료만으로 만들 수 있는 레시피를 찾지 못했어요."
               onShare={setPendingShare}
+              onIngredientsConsumed={ingredientsConsumed}
               recipes={result.availableOnly}
               sharedRecipeKeys={sharedRecipeKeys}
               sharingRecipeKeys={sharingRecipeKeys}
@@ -310,6 +321,7 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
             <RecipeGroup
               emptyMessage="재료 1~3개를 더해 만들 수 있는 레시피를 찾지 못했어요."
               onShare={setPendingShare}
+              onIngredientsConsumed={ingredientsConsumed}
               recipes={result.needsFewMore}
               sharedRecipeKeys={sharedRecipeKeys}
               sharingRecipeKeys={sharingRecipeKeys}
@@ -374,6 +386,7 @@ function OptionRow<T extends number>({
 function RecipeGroup({
   emptyMessage,
   onShare,
+  onIngredientsConsumed,
   recipes,
   sharedRecipeKeys,
   sharingRecipeKeys,
@@ -382,6 +395,7 @@ function RecipeGroup({
 }: {
   emptyMessage: string;
   onShare(recipe: RecipeSuggestion): void;
+  onIngredientsConsumed(result: RecipeConsumptionResult): void;
   recipes: RecipeSuggestion[];
   sharedRecipeKeys: Set<string>;
   sharingRecipeKeys: Set<string>;
@@ -397,7 +411,7 @@ function RecipeGroup({
           const key = recipeIdentity(recipe);
           return (
             <View key={`${recipe.title}-${index}`} style={styles.shareRecipeBlock}>
-              <RecipeCard recipe={recipe} />
+              <RecipeCard onIngredientsConsumed={onIngredientsConsumed} recipe={recipe} />
               <Button
                 disabled={sharedRecipeKeys.has(key)}
                 label={sharedRecipeKeys.has(key) ? '공유 레시피에 등록됨' : '공유 레시피에 등록'}
@@ -495,14 +509,14 @@ const styles = StyleSheet.create({
   emptyIngredients: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, padding: spacing.xxl },
   emptyIngredientsTitle: { color: colors.text.primary, ...typography.bodyStrong },
   emptyIngredientsDescription: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs, textAlign: 'center' },
-  ingredientGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  ingredientCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, minHeight: 126, padding: spacing.lg, width: '48%' },
-  ingredientCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 15 },
+  ingredientGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  ingredientCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, minHeight: 102, padding: spacing.md, width: '48.5%' },
+  ingredientCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 11 },
   checkbox: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1.5, height: 24, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 24 },
   checkboxSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
   checkmark: { color: colors.text.inverse, fontSize: 13, fontWeight: '900' },
-  ingredientName: { color: colors.text.primary, fontSize: 16, fontWeight: '800', lineHeight: 22, paddingRight: spacing.xxl },
-  ingredientMeta: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.md },
+  ingredientName: { color: colors.text.primary, fontSize: 15, fontWeight: '800', lineHeight: 20, paddingRight: spacing.xxl },
+  ingredientMeta: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.sm },
   date: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
   useSoonDate: { color: colors.danger, ...typography.caption, fontWeight: '700', marginTop: spacing.xs },
   pressed: { opacity: interaction.pressedOpacity },

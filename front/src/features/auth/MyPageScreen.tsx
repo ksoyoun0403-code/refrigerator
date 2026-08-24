@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   valueRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
   nickname: { color: colors.text.primary, ...typography.title },
   editButton: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, minHeight: 44, paddingHorizontal: spacing.sm },
-  editIcon: { height: 19, tintColor: colors.brand.action, width: 19 },
+  editIcon: { height: 15, tintColor: colors.brand.action, width: 15 },
   editText: { color: colors.brand.action, ...typography.label },
   input: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong, borderRadius: radii.medium, borderWidth: 1, color: colors.text.primary, marginTop: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md, ...typography.body },
   counter: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs, textAlign: 'right' },

@@ -72,3 +72,35 @@ export type RecipePost = RecipePostListItem & {
   summary: string;
   recipe: RecipeSuggestion;
 };
+
+export type RecipeConsumptionPreviewLine = {
+  id: string;
+  ingredientName: string;
+  recipeAmount: string;
+  status: 'MATCHED' | 'INSUFFICIENT' | 'NOT_FOUND' | 'INCOMPATIBLE_UNIT' | 'UNSUPPORTED';
+  itemId?: string;
+  itemName?: string;
+  unit?: string;
+  currentQuantity?: string;
+  suggestedQuantity?: string;
+  remainingQuantity?: string;
+  expirationDate?: string | null;
+  message?: string;
+  manualItems?: Array<{
+    itemId: string;
+    itemName: string;
+    currentQuantity: string;
+    unit: string;
+    expirationDate: string | null;
+  }>;
+};
+
+export type RecipeConsumptionPreview = {
+  recipeTitle: string;
+  lines: RecipeConsumptionPreviewLine[];
+};
+
+export type RecipeConsumptionResult = {
+  recipeTitle: string;
+  updatedItems: Array<{ id: string; name: string; quantity: string; unit: string; removed: boolean }>;
+};
