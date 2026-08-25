@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../design-system/Button';
 import {
   colors,
@@ -20,73 +23,75 @@ import {
 import { getExpirationItems } from '../expiration/expirationApi';
 import { ExpirationItem } from '../expiration/types';
 import { RecipeCard } from './RecipeCard';
+import { shareRecipePost } from './communityApi';
 import { generateRecipeSuggestions } from './recipeApi';
-import {
-  deleteSavedRecipe,
-  getSavedRecipes,
-  recipeIdentity,
-  saveRecipe,
-} from './savedRecipeApi';
-import { RecipeSuggestion, RecipeSuggestionResult } from './types';
+import { RecipeConsumptionResult, RecipeSuggestion, RecipeSuggestionResult } from './types';
 
-const SERVING_OPTIONS = [1, 2, 3, 4] as const;
-const COOKING_TIME_OPTIONS = [20, 30, 45, 60] as const;
 const MAX_SELECTED_ITEMS = 12;
+const checkIcon = require('../../../assets/icons/check.png');
 
 type Props = {
   isActive: boolean;
+  nickname: string;
 };
 
-export function RecipeSuggestionScreen({ isActive }: Props) {
+export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
+  const itemsRequestId = useRef(0);
   const [items, setItems] = useState<ExpirationItem[]>([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [itemsLoadFailed, setItemsLoadFailed] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [servings, setServings] = useState(2);
-  const [maxCookingMinutes, setMaxCookingMinutes] = useState(30);
+  const [servingsInput, setServingsInput] = useState('1');
+  const [maxCookingMinutesInput, setMaxCookingMinutesInput] = useState('30');
   const [assumeBasicSeasonings, setAssumeBasicSeasonings] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<RecipeSuggestionResult>();
   const [errorMessage, setErrorMessage] = useState<string>();
-  const [savedRecipeIds, setSavedRecipeIds] = useState<Record<string, string>>({});
-  const [savingRecipeKeys, setSavingRecipeKeys] = useState<Set<string>>(new Set());
+  const [pendingShare, setPendingShare] = useState<RecipeSuggestion>();
+  const [sharedRecipeKeys, setSharedRecipeKeys] = useState<Set<string>>(new Set());
+  const [sharingRecipeKeys, setSharingRecipeKeys] = useState<Set<string>>(new Set());
+  const servings = Number(servingsInput);
+  const maxCookingMinutes = Number(maxCookingMinutesInput);
+  const isServingsValid = /^\d+$/.test(servingsInput) && Number.isInteger(servings) && servings >= 1 && servings <= 10;
+  const isCookingTimeValid = /^\d+$/.test(maxCookingMinutesInput) && Number.isInteger(maxCookingMinutes) && maxCookingMinutes >= 15 && maxCookingMinutes <= 120;
+  const areRecipeOptionsValid = isServingsValid && isCookingTimeValid;
 
   const loadItems = useCallback(async () => {
+    const requestId = ++itemsRequestId.current;
     setIsLoadingItems(true);
     setItemsLoadFailed(false);
+    setItems([]);
+    setSelectedIds(new Set());
+    setResult(undefined);
+    setErrorMessage(undefined);
     try {
       const loadedItems = await getExpirationItems();
-      const availableIds = new Set(loadedItems.map(({ id }) => id));
+      if (requestId !== itemsRequestId.current) return;
       setItems(loadedItems);
-      setSelectedIds((current) =>
-        new Set([...current].filter((id) => availableIds.has(id))),
-      );
     } catch {
+      if (requestId !== itemsRequestId.current) return;
+      setItems([]);
+      setSelectedIds(new Set());
       setItemsLoadFailed(true);
     } finally {
-      setIsLoadingItems(false);
-    }
-  }, []);
-
-  const loadSavedRecipeIds = useCallback(async () => {
-    try {
-      const savedRecipes = await getSavedRecipes();
-      setSavedRecipeIds(
-        Object.fromEntries(
-          savedRecipes.map(({ id, recipe }) => [recipeIdentity(recipe), id]),
-        ),
-      );
-    } catch {
-      // Bookmark actions still show their own error when the saved list is unavailable.
+      if (requestId === itemsRequestId.current) setIsLoadingItems(false);
     }
   }, []);
 
   useEffect(() => {
     if (isActive) {
       void loadItems();
-      void loadSavedRecipeIds();
+    } else {
+      itemsRequestId.current += 1;
+      setItems([]);
+      setSelectedIds(new Set());
+      setResult(undefined);
+      setErrorMessage(undefined);
+      setItemsLoadFailed(false);
+      setIsLoadingItems(false);
+      setPendingShare(undefined);
     }
-  }, [isActive, loadItems, loadSavedRecipeIds]);
+  }, [isActive, loadItems]);
 
   const toggleItem = (item: ExpirationItem) => {
     if (isGenerating) return;
@@ -110,8 +115,25 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
     setErrorMessage(undefined);
   };
 
-  const generate = async () => {
+  const clearSelectedItems = () => {
     if (isGenerating || selectedIds.size === 0) return;
+    setSelectedIds(new Set());
+    setResult(undefined);
+    setErrorMessage(undefined);
+  };
+
+  const ingredientsConsumed = (consumption: RecipeConsumptionResult) => {
+    const updates = new Map(consumption.updatedItems.map((item) => [item.id, item]));
+    setItems((current) => current.flatMap((item) => {
+      const update = updates.get(item.id);
+      if (!update) return [item];
+      return update.removed ? [] : [{ ...item, quantity: update.quantity }];
+    }));
+    setSelectedIds((current) => new Set([...current].filter((id) => !updates.get(id)?.removed)));
+  };
+
+  const generate = async () => {
+    if (isGenerating || selectedIds.size === 0 || !areRecipeOptionsValid) return;
     setIsGenerating(true);
     setResult(undefined);
     setErrorMessage(undefined);
@@ -135,34 +157,22 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
     }
   };
 
-  const toggleBookmark = async (recipe: RecipeSuggestion) => {
+  const confirmShare = async (recipe: RecipeSuggestion) => {
     const key = recipeIdentity(recipe);
-    if (savingRecipeKeys.has(key)) return;
-    setSavingRecipeKeys((current) => new Set(current).add(key));
+    if (sharingRecipeKeys.has(key)) return;
+    setSharingRecipeKeys((current) => new Set(current).add(key));
     try {
-      const savedId = savedRecipeIds[key];
-      if (savedId) {
-        await deleteSavedRecipe(savedId);
-        setSavedRecipeIds((current) => {
-          const next = { ...current };
-          delete next[key];
-          return next;
-        });
-      } else {
-        const saved = await saveRecipe(recipe);
-        setSavedRecipeIds((current) => ({
-          ...current,
-          [recipeIdentity(saved.recipe)]: saved.id,
-          [key]: saved.id,
-        }));
-      }
+      await shareRecipePost(recipe);
+      setSharedRecipeKeys((current) => new Set(current).add(key));
+      setPendingShare(undefined);
+      Alert.alert('공유 완료', '공유 레시피와 나의 요리책에 레시피가 등록됐어요.');
     } catch (error) {
       Alert.alert(
-        '북마크를 변경하지 못했어요',
+        '레시피를 공유하지 못했어요',
         error instanceof Error ? error.message : '잠시 후 다시 시도해주세요.',
       );
     } finally {
-      setSavingRecipeKeys((current) => {
+      setSharingRecipeKeys((current) => {
         const next = new Set(current);
         next.delete(key);
         return next;
@@ -171,12 +181,11 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.eyebrow}>MYDISH AI</Text>
         <Text style={styles.title}>어떤 재료로 요리할까요?</Text>
         <Text style={styles.description}>
           사용할 재료를 고르면 지금 바로 만들 수 있는 요리부터 알려드려요.
@@ -189,9 +198,24 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
               <Text style={styles.retry}>다시 불러오기</Text>
             </Pressable>
           ) : (
-            <Text style={styles.selectionCount}>{selectedIds.size}개 선택</Text>
+            <View style={styles.selectionActions}>
+              <Text style={styles.selectionCount}>{selectedIds.size}개 선택</Text>
+              {selectedIds.size > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isGenerating}
+                  onPress={clearSelectedItems}
+                  style={({ pressed }) => [styles.clearSelectionButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.clearSelectionButtonText}>선택 모두 취소</Text>
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
+        {!itemsLoadFailed && (
+          <Text style={styles.selectionGuide}>레시피에 사용할 냉장고 재료를 최대 {MAX_SELECTED_ITEMS}개까지 선택할 수 있어요.</Text>
+        )}
         {isLoadingItems && items.length === 0 ? (
           <ActivityIndicator color={colors.brand.action} style={styles.itemsLoader} />
         ) : items.length === 0 ? (
@@ -218,7 +242,7 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
                   ]}
                 >
                   <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                    {selected && <Text style={styles.checkmark}>✓</Text>}
+                    {selected && <Image resizeMode="contain" source={checkIcon} style={styles.checkmarkIcon} />}
                   </View>
                   <Text numberOfLines={2} style={styles.ingredientName}>{item.name}</Text>
                   <Text style={styles.ingredientMeta}>
@@ -236,27 +260,29 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
         )}
 
         <View style={styles.optionsCard}>
-          <OptionRow
+          <NumberInputRow
+            errorMessage={isServingsValid ? undefined : '1~10명 사이로 입력해주세요.'}
             label="인원"
-            onSelect={(value) => {
-              setServings(value);
+            maxLength={2}
+            onChange={(value) => {
+              setServingsInput(value);
               setResult(undefined);
               setErrorMessage(undefined);
             }}
-            options={SERVING_OPTIONS}
-            selected={servings}
             suffix="명"
+            value={servingsInput}
           />
-          <OptionRow
+          <NumberInputRow
+            errorMessage={isCookingTimeValid ? undefined : '15~120분 사이로 입력해주세요.'}
             label="최대 조리 시간"
-            onSelect={(value) => {
-              setMaxCookingMinutes(value);
+            maxLength={3}
+            onChange={(value) => {
+              setMaxCookingMinutesInput(value);
               setResult(undefined);
               setErrorMessage(undefined);
             }}
-            options={COOKING_TIME_OPTIONS}
-            selected={maxCookingMinutes}
             suffix="분"
+            value={maxCookingMinutesInput}
           />
           <Pressable
             accessibilityRole="switch"
@@ -280,8 +306,8 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
 
         <Button
           accessibilityLabel={isGenerating ? 'AI 레시피 생성 중' : undefined}
-          disabled={selectedIds.size === 0}
-          label={selectedIds.size === 0 ? '재료를 먼저 선택해주세요' : 'AI 레시피 만들기'}
+          disabled={selectedIds.size === 0 || !areRecipeOptionsValid}
+          label={selectedIds.size === 0 ? '재료를 먼저 선택해주세요' : !areRecipeOptionsValid ? '인원과 조리 시간을 확인해주세요' : 'AI 레시피 만들기'}
           loading={isGenerating}
           onPress={() => void generate()}
           style={styles.generateButton}
@@ -297,7 +323,7 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
             <View style={styles.generatingCopy}>
               <Text style={styles.generatingTitle}>AI 레시피 생성 중</Text>
               <Text style={styles.generatingDescription}>
-                선택한 재료를 분석하고 있어요. 약 30초 정도 걸릴 수 있어요.
+                선택한 재료를 분석하고 있어요. 약 1분 정도 걸릴 수 있어요.
               </Text>
             </View>
           </View>
@@ -314,19 +340,21 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
           <View style={styles.results}>
             <RecipeGroup
               emptyMessage="선택한 재료만으로 만들 수 있는 레시피를 찾지 못했어요."
-              onToggleBookmark={toggleBookmark}
+              onShare={setPendingShare}
+              onIngredientsConsumed={ingredientsConsumed}
               recipes={result.availableOnly}
-              savedRecipeIds={savedRecipeIds}
-              savingRecipeKeys={savingRecipeKeys}
+              sharedRecipeKeys={sharedRecipeKeys}
+              sharingRecipeKeys={sharingRecipeKeys}
               subtitle="추가 장보기 없이 바로 만들 수 있어요."
               title="지금 있는 재료로 만들기"
             />
             <RecipeGroup
               emptyMessage="재료 1~3개를 더해 만들 수 있는 레시피를 찾지 못했어요."
-              onToggleBookmark={toggleBookmark}
+              onShare={setPendingShare}
+              onIngredientsConsumed={ingredientsConsumed}
               recipes={result.needsFewMore}
-              savedRecipeIds={savedRecipeIds}
-              savingRecipeKeys={savingRecipeKeys}
+              sharedRecipeKeys={sharedRecipeKeys}
+              sharingRecipeKeys={sharingRecipeKeys}
               subtitle="추가할 재료를 3개 이하로 제한했어요."
               title="조금만 추가해서 만들기"
             />
@@ -336,62 +364,68 @@ export function RecipeSuggestionScreen({ isActive }: Props) {
           </View>
         )}
       </ScrollView>
+      <ShareConfirmation
+        nickname={nickname}
+        onCancel={() => setPendingShare(undefined)}
+        onConfirm={(recipe) => void confirmShare(recipe)}
+        recipe={pendingShare}
+        sharing={pendingShare ? sharingRecipeKeys.has(recipeIdentity(pendingShare)) : false}
+      />
     </SafeAreaView>
   );
 }
 
-function OptionRow<T extends number>({
+function NumberInputRow({
+  errorMessage,
   label,
-  onSelect,
-  options,
-  selected,
+  maxLength,
+  onChange,
   suffix,
+  value,
 }: {
+  errorMessage?: string;
   label: string;
-  onSelect(value: T): void;
-  options: readonly T[];
-  selected: number;
+  maxLength: number;
+  onChange(value: string): void;
   suffix: string;
+  value: string;
 }) {
   return (
     <View style={styles.optionBlock}>
       <Text style={styles.optionLabel}>{label}</Text>
-      <View style={styles.optionChips}>
-        {options.map((option) => (
-          <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selected === option }}
-            key={option}
-            onPress={() => onSelect(option)}
-            style={[
-              styles.optionChip,
-              selected === option && styles.optionChipSelected,
-            ]}
-          >
-            <Text style={selected === option ? styles.optionChipTextSelected : styles.optionChipText}>
-              {option}{suffix}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.numberInputRow}>
+        <TextInput
+          accessibilityLabel={`${label} 입력`}
+          keyboardType="number-pad"
+          maxLength={maxLength}
+          onChangeText={(text) => onChange(text.replace(/\D/g, ''))}
+          selectTextOnFocus
+          style={[styles.numberInput, errorMessage && styles.numberInputError]}
+          value={value}
+        />
+        <Text style={styles.numberInputSuffix}>{suffix}</Text>
       </View>
+      {errorMessage && <Text style={styles.numberInputErrorText}>{errorMessage}</Text>}
     </View>
   );
 }
 
 function RecipeGroup({
   emptyMessage,
-  onToggleBookmark,
+  onShare,
+  onIngredientsConsumed,
   recipes,
-  savedRecipeIds,
-  savingRecipeKeys,
+  sharedRecipeKeys,
+  sharingRecipeKeys,
   subtitle,
   title,
 }: {
   emptyMessage: string;
-  onToggleBookmark(recipe: RecipeSuggestion): Promise<void>;
+  onShare(recipe: RecipeSuggestion): void;
+  onIngredientsConsumed(result: RecipeConsumptionResult): void;
   recipes: RecipeSuggestion[];
-  savedRecipeIds: Record<string, string>;
-  savingRecipeKeys: Set<string>;
+  sharedRecipeKeys: Set<string>;
+  sharingRecipeKeys: Set<string>;
   subtitle: string;
   title: string;
 }) {
@@ -403,18 +437,15 @@ function RecipeGroup({
         recipes.map((recipe, index) => {
           const key = recipeIdentity(recipe);
           return (
-            <RecipeCard
-              bookmarkState={
-                savingRecipeKeys.has(key)
-                  ? 'loading'
-                  : savedRecipeIds[key]
-                    ? 'saved'
-                    : 'idle'
-              }
-              key={`${recipe.title}-${index}`}
-              onBookmarkPress={() => void onToggleBookmark(recipe)}
-              recipe={recipe}
-            />
+            <View key={`${recipe.title}-${index}`} style={styles.shareRecipeBlock}>
+              <RecipeCard onIngredientsConsumed={onIngredientsConsumed} recipe={recipe} />
+              <Button
+                disabled={sharedRecipeKeys.has(key)}
+                label={sharedRecipeKeys.has(key) ? '공유 레시피에 등록됨' : '공유 레시피에 등록'}
+                loading={sharingRecipeKeys.has(key)}
+                onPress={() => onShare(recipe)}
+              />
+            </View>
           );
         })
       ) : (
@@ -424,6 +455,57 @@ function RecipeGroup({
       )}
     </View>
   );
+}
+
+function ShareConfirmation({
+  nickname,
+  onCancel,
+  onConfirm,
+  recipe,
+  sharing,
+}: {
+  nickname: string;
+  onCancel(): void;
+  onConfirm(recipe: RecipeSuggestion): void;
+  recipe?: RecipeSuggestion;
+  sharing: boolean;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={Boolean(recipe)}>
+      <View style={styles.modalBackdrop}>
+        {recipe && (
+          <View style={styles.shareModal}>
+            <Text style={styles.shareModalEyebrow}>COMMUNITY SHARE</Text>
+            <Text style={styles.shareModalTitle}>이 레시피를 공유할까요?</Text>
+            <Text style={styles.shareNotice}>아래 정보가 모든 사용자에게 공개됩니다.</Text>
+            <View style={styles.shareInfoBox}>
+              <Text style={styles.shareInfoLabel}>작성자 닉네임</Text>
+              <Text style={styles.shareInfoValue}>@{nickname}</Text>
+              <Text style={styles.shareInfoLabel}>레시피 이름</Text>
+              <Text style={styles.shareInfoValue}>{recipe.title}</Text>
+              <Text style={styles.shareInfoLabel}>공개 재료</Text>
+              <Text style={styles.shareInfoValue}>{recipeIngredientNames(recipe).join(' · ')}</Text>
+            </View>
+            <View style={styles.shareActions}>
+              <Button disabled={sharing} label="취소" onPress={onCancel} style={styles.shareAction} variant="secondary" />
+              <Button label="공유하기" loading={sharing} onPress={() => onConfirm(recipe)} style={styles.shareAction} />
+            </View>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+function recipeIdentity(recipe: RecipeSuggestion) {
+  return JSON.stringify(recipe);
+}
+
+function recipeIngredientNames(recipe: RecipeSuggestion) {
+  return [...new Set([
+    ...recipe.usedIngredients.map(({ name }) => name.trim()),
+    ...recipe.missingIngredients.map(({ name }) => name.trim()),
+  ].filter(Boolean))];
 }
 
 function unitLabel(unit: ExpirationItem['unit']) {
@@ -443,26 +525,29 @@ function unitLabel(unit: ExpirationItem['unit']) {
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.canvas, flex: 1 },
-  container: { padding: spacing.xxl, paddingBottom: spacing.giant },
-  eyebrow: { color: colors.brand.action, ...typography.caption, fontWeight: '800', letterSpacing: 1.6, marginTop: spacing.lg },
+  container: { padding: spacing.xl, paddingBottom: spacing.giant },
   title: { color: colors.text.primary, ...typography.heading1, marginTop: spacing.xs },
   description: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
   selectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md, marginTop: spacing.xxxl },
   sectionTitle: { color: colors.text.primary, ...typography.heading2 },
+  selectionActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   selectionCount: { color: colors.brand.action, ...typography.label },
+  clearSelectionButton: { backgroundColor: colors.brand.soft, borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  clearSelectionButtonText: { color: colors.brand.action, ...typography.caption, fontWeight: '700' },
+  selectionGuide: { color: colors.brand.action, ...typography.caption, marginBottom: spacing.md },
   retry: { color: colors.brand.action, ...typography.label, paddingVertical: spacing.sm },
   itemsLoader: { minHeight: 120 },
   emptyIngredients: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, padding: spacing.xxl },
   emptyIngredientsTitle: { color: colors.text.primary, ...typography.bodyStrong },
   emptyIngredientsDescription: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs, textAlign: 'center' },
-  ingredientGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  ingredientCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, minHeight: 126, padding: spacing.lg, width: '48%' },
-  ingredientCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 15 },
+  ingredientGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  ingredientCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, minHeight: 102, padding: spacing.md, width: '48.5%' },
+  ingredientCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 11 },
   checkbox: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1.5, height: 24, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 24 },
   checkboxSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
-  checkmark: { color: colors.text.inverse, fontSize: 13, fontWeight: '900' },
-  ingredientName: { color: colors.text.primary, fontSize: 16, fontWeight: '800', lineHeight: 22, paddingRight: spacing.xxl },
-  ingredientMeta: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.md },
+  checkmarkIcon: { height: 15, tintColor: colors.text.inverse, width: 15 },
+  ingredientName: { color: colors.text.primary, fontSize: 15, fontWeight: '800', lineHeight: 20, paddingRight: spacing.xxl },
+  ingredientMeta: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.sm },
   date: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
   useSoonDate: { color: colors.danger, ...typography.caption, fontWeight: '700', marginTop: spacing.xs },
   pressed: { opacity: interaction.pressedOpacity },
@@ -470,11 +555,11 @@ const styles = StyleSheet.create({
   optionBlock: { gap: spacing.sm },
   optionLabel: { color: colors.text.primary, ...typography.label },
   optionDescription: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
-  optionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  optionChip: { alignItems: 'center', backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.full, borderWidth: 1, minHeight: interaction.minimumTouchSize, minWidth: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  optionChipSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
-  optionChipText: { color: colors.text.secondary, ...typography.label },
-  optionChipTextSelected: { color: colors.text.inverse, ...typography.label },
+  numberInputRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  numberInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong, borderRadius: radii.medium, borderWidth: 1, color: colors.text.primary, fontSize: 18, fontWeight: '800', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, textAlign: 'center', width: 88 },
+  numberInputError: { borderColor: colors.danger },
+  numberInputSuffix: { color: colors.text.secondary, ...typography.bodyStrong },
+  numberInputErrorText: { color: colors.danger, ...typography.caption },
   seasoningRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: interaction.minimumTouchSize },
   seasoningCopy: { flex: 1, paddingRight: spacing.md },
   toggle: { backgroundColor: colors.borderStrong, borderRadius: radii.full, height: 30, justifyContent: 'center', padding: 3, width: 52 },
@@ -490,9 +575,20 @@ const styles = StyleSheet.create({
   errorTitle: { color: colors.danger, ...typography.bodyStrong },
   errorDescription: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },
   results: { gap: spacing.xxxl, marginTop: spacing.huge },
+  shareRecipeBlock: { gap: spacing.md },
   recipeGroup: { gap: spacing.md },
   resultTitle: { color: colors.text.primary, ...typography.heading2 },
   resultSubtitle: { color: colors.text.secondary, ...typography.caption, marginTop: -spacing.sm },
+  modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(43, 27, 21, 0.5)', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  shareModal: { backgroundColor: colors.surface, borderRadius: radii.xlarge, maxWidth: 520, padding: spacing.xl, width: '100%' },
+  shareModalEyebrow: { color: colors.brand.action, ...typography.caption, fontWeight: '800', letterSpacing: 1.2 },
+  shareModalTitle: { color: colors.text.primary, ...typography.heading2, marginTop: spacing.xs },
+  shareNotice: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
+  shareInfoBox: { backgroundColor: colors.surfaceMuted, borderRadius: radii.large, gap: spacing.xs, marginTop: spacing.lg, padding: spacing.lg },
+  shareInfoLabel: { color: colors.text.muted, ...typography.caption, marginTop: spacing.sm },
+  shareInfoValue: { color: colors.text.primary, ...typography.bodyStrong },
+  shareActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  shareAction: { flex: 1 },
   emptyResult: { backgroundColor: colors.surfaceMuted, borderRadius: radii.large, padding: spacing.lg },
   emptyResultText: { color: colors.text.muted, ...typography.caption, textAlign: 'center' },
   aiNotice: { color: colors.text.muted, ...typography.caption, textAlign: 'center' },

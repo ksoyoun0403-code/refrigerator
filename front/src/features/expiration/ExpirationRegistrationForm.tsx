@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -88,6 +89,12 @@ export function ExpirationRegistrationForm(props: Props) {
     }
     if (expirationDate && !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
       setErrorMessage('유통기한을 YYYYMMDD 8자리로 입력해주세요.');
+      return;
+    }
+    if (expirationDate && expirationDate < getTodayInSeoul()) {
+      const message = '유통기한이 지난 상품입니다';
+      setErrorMessage(message);
+      Alert.alert(message, '오늘 이후의 유통기한을 입력해주세요.');
       return;
     }
 
@@ -199,12 +206,7 @@ export function ExpirationRegistrationForm(props: Props) {
         </View>
       )}
 
-      <View style={styles.labelRow}>
-        <Text style={styles.label}>유통기한 (선택)</Text>
-        <Pressable disabled={isSaving} onPress={() => setExpirationDate('')}>
-          <Text style={styles.clearAction}>입력 지우기</Text>
-        </Pressable>
-      </View>
+      <Text style={styles.label}>유통기한 (선택)</Text>
       {scan && scan.candidates.length > 0 && (
         <View style={styles.candidates}>
           <Text style={styles.candidateHint}>날짜 후보를 눌러 바로 선택할 수 있어요.</Text>
@@ -268,10 +270,9 @@ export function ExpirationRegistrationForm(props: Props) {
           label={editingItem ? '수정 내용 저장' : '냉장고에 등록'}
           loading={isSaving}
           onPress={() => void save()}
-          style={[
-            styles.saveButton,
-            editingItem && styles.editSaveButton,
-          ]}
+          style={editingItem || props.manual
+            ? [styles.saveButton, editingItem && styles.editSaveButton]
+            : styles.registrationSaveButton}
         />
       </View>
     </View>
@@ -305,8 +306,6 @@ const styles = StyleSheet.create({
   unitOptionSelected: { backgroundColor: colors.brand.action },
   unitText: { color: colors.text.secondary, fontWeight: '700', textAlign: 'center' },
   unitSelectedText: { color: colors.text.inverse, fontWeight: '700', textAlign: 'center' },
-  labelRow: { alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between' },
-  clearAction: { color: colors.brand.action, ...typography.caption, fontWeight: '700', marginBottom: spacing.sm, minHeight: interaction.minimumTouchSize },
   candidates: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
   candidateHint: { color: colors.text.secondary, ...typography.caption, marginBottom: spacing.xs, width: '100%' },
   dateCandidate: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.small, borderWidth: 1, minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
@@ -317,4 +316,5 @@ const styles = StyleSheet.create({
   cancelButton: { flex: 0.8 },
   saveButton: { flex: 1 },
   editSaveButton: { flex: 1.2 },
+  registrationSaveButton: { marginTop: spacing.xl, width: '100%' },
 });

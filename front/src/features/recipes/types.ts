@@ -39,3 +39,69 @@ export type GenerateRecipeSuggestions = {
   maxCookingMinutes: number;
   assumeBasicSeasonings: boolean;
 };
+
+export type RecipePostListItem = {
+  id: string;
+  author: { id: string; nickname: string };
+  title: string;
+  ingredientNames: string[];
+  bookmarkCount: number;
+  commentCount: number;
+  isBookmarked: boolean;
+  isOwn: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecipeComment = {
+  id: string;
+  recipePostId: string;
+  author: { id: string; nickname: string };
+  content: string;
+  isOwn: boolean;
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecipeCommentPage = {
+  items: RecipeComment[];
+  nextCursor: string | null;
+};
+
+export type RecipePost = RecipePostListItem & {
+  summary: string;
+  recipe: RecipeSuggestion;
+};
+
+export type RecipeConsumptionPreviewLine = {
+  id: string;
+  ingredientName: string;
+  recipeAmount: string;
+  status: 'MATCHED' | 'INSUFFICIENT' | 'NOT_FOUND' | 'INCOMPATIBLE_UNIT' | 'UNSUPPORTED';
+  itemId?: string;
+  itemName?: string;
+  unit?: string;
+  currentQuantity?: string;
+  suggestedQuantity?: string;
+  remainingQuantity?: string;
+  expirationDate?: string | null;
+  message?: string;
+  manualItems?: Array<{
+    itemId: string;
+    itemName: string;
+    currentQuantity: string;
+    unit: string;
+    expirationDate: string | null;
+  }>;
+};
+
+export type RecipeConsumptionPreview = {
+  recipeTitle: string;
+  lines: RecipeConsumptionPreviewLine[];
+};
+
+export type RecipeConsumptionResult = {
+  recipeTitle: string;
+  updatedItems: Array<{ id: string; name: string; quantity: string; unit: string; removed: boolean }>;
+};

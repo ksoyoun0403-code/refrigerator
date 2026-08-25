@@ -1,10 +1,13 @@
-import { ActivityIndicator, Pressable, PressableProps, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
+import { ActivityIndicator, Image, ImageSourcePropType, ImageStyle, Pressable, PressableProps, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { colors, interaction, radii, spacing, typography } from './tokens';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
 type Props = Omit<PressableProps, 'children' | 'style'> & {
   label: string;
+  iconSource?: ImageSourcePropType;
+  iconStyle?: StyleProp<ImageStyle>;
+  iconTintColor?: string;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
   variant?: ButtonVariant;
@@ -12,6 +15,9 @@ type Props = Omit<PressableProps, 'children' | 'style'> & {
 
 export function Button({
   disabled,
+  iconSource,
+  iconStyle,
+  iconTintColor,
   label,
   loading = false,
   style,
@@ -41,7 +47,10 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={indicatorColor} size="small" />
       ) : (
-        <Text style={[styles.label, styles[`${variant}Label`]]}>{label}</Text>
+        <View style={styles.content}>
+          {iconSource && <Image resizeMode="contain" source={iconSource} style={[styles.icon, iconStyle, iconTintColor ? { tintColor: iconTintColor } : undefined]} />}
+          <Text style={[styles.label, styles[`${variant}Label`]]}>{label}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -62,6 +71,8 @@ const styles = StyleSheet.create({
   danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft },
   ghost: { backgroundColor: 'transparent', borderColor: 'transparent' },
   label: typography.button,
+  content: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
+  icon: { height: 24, width: 24 },
   primaryLabel: { color: colors.text.inverse },
   secondaryLabel: { color: colors.text.secondary },
   dangerLabel: { color: colors.danger },

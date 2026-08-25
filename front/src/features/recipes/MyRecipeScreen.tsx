@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, spacing, typography } from '../../design-system/tokens';
 import { RecipeCard } from './RecipeCard';
 import { deleteSavedRecipe, getSavedRecipes } from './savedRecipeApi';
@@ -99,7 +99,7 @@ export function MyRecipeScreen({ isActive }: { isActive: boolean }) {
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>아직 저장한 레시피가 없어요</Text>
             <Text style={styles.emptyDescription}>
-              레시피 생성 탭에서 마음에 드는 레시피의 ☆ 저장 버튼을 눌러보세요.
+              AI 레시피 생성 탭에서 마음에 드는 레시피의 북마크 저장 버튼을 눌러보세요.
             </Text>
           </View>
         ) : (

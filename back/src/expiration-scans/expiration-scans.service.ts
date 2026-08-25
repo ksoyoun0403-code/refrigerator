@@ -27,7 +27,7 @@ export class ExpirationScansService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async scan(image?: ImageInput) {
+  async scan(userId: string, image?: ImageInput) {
     if (!image) {
       throw new BadRequestException('이미지 파일이 필요합니다.');
     }
@@ -39,7 +39,7 @@ export class ExpirationScansService {
     }
 
     const scan = await this.prisma.client.expirationScan.create({
-      data: { status: 'PROCESSING' },
+      data: { status: 'PROCESSING', userId },
       select: { id: true },
     });
 

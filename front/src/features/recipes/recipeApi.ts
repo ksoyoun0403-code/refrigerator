@@ -1,4 +1,4 @@
-import { fetch } from 'expo/fetch';
+import { authenticatedFetch } from '../auth/authenticatedFetch';
 import {
   GenerateRecipeSuggestions,
   RecipeSuggestionResult,
@@ -12,7 +12,7 @@ export async function generateRecipeSuggestions(
 ) {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/recipe-suggestions`, {
+    response = await authenticatedFetch(`${API_BASE_URL}/recipe-suggestions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),

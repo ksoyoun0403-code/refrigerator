@@ -19,6 +19,9 @@ const allScanIds = [scanId, ...sortingFixtures.map((fixture) => fixture.scanId)]
 const database = new Client({ connectionString: process.env.DATABASE_URL });
 let server;
 let databaseConnected = false;
+let testUserId;
+let otherUserId;
+let accessToken;
 
 function todayInSeoul() {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -32,7 +35,7 @@ function todayInSeoul() {
 async function waitForServer() {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      const response = await fetch(`${baseUrl}/expiration-items`);
+      const response = await fetch(`${baseUrl}/health`);
       if (response.ok) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -44,18 +47,19 @@ async function insertSortingFixtures() {
   for (const fixture of sortingFixtures) {
     await database.query(
       `INSERT INTO expiration_scans
-        (id, status, "createdAt", "updatedAt")
-       VALUES ($1, 'CONFIRMED', NOW(), NOW())`,
-      [fixture.scanId],
+        (id, "userId", status, "createdAt", "updatedAt")
+       VALUES ($1, $2, 'CONFIRMED', NOW(), NOW())`,
+      [fixture.scanId, testUserId],
     );
     await database.query(
       `INSERT INTO expiration_items
-        (id, "scanId", name, quantity, unit, "purchasedAt", "expirationDate",
+        (id, "userId", "scanId", name, quantity, unit, "purchasedAt", "expirationDate",
          source, section, "sortOrder", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, 1, 'COUNT', $4::date, $5::date,
-         'IMAGE', $6::"ExpirationItemSection", $7, NOW(), NOW())`,
+       VALUES ($1, $2, $3, $4, 1, 'COUNT', $5::date, $6::date,
+         'IMAGE', $7::"ExpirationItemSection", $8, NOW(), NOW())`,
       [
         fixture.id,
+        testUserId,
         fixture.scanId,
         fixture.name,
         fixture.purchasedAt,
@@ -71,12 +75,6 @@ async function main() {
   assert.ok(process.env.DATABASE_URL, 'DATABASE_URL is required.');
   await database.connect();
   databaseConnected = true;
-  await database.query(
-    `INSERT INTO expiration_scans
-      (id, status, "createdAt", "updatedAt")
-     VALUES ($1, 'NEEDS_REVIEW', NOW(), NOW())`,
-    [scanId],
-  );
 
   server = spawn(process.execPath, ['dist/main.js'], {
     env: { ...process.env, PORT: String(port) },
@@ -86,9 +84,51 @@ async function main() {
   server.stderr.on('data', (chunk) => { serverError += chunk.toString(); });
   await waitForServer();
 
-  const createResponse = await fetch(`${baseUrl}/expiration-items`, {
+  const suffix = Date.now();
+  const registerResponse = await fetch(`${baseUrl}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loginId: `dbtest${suffix}`,
+      password: 'database-test-password!',
+      nickname: `DB테스트${suffix}`,
+    }),
+  });
+  const registerBody = await registerResponse.text();
+  assert.equal(registerResponse.status, 201, registerBody);
+  const session = JSON.parse(registerBody);
+  testUserId = session.user.id;
+  accessToken = session.accessToken;
+
+  const otherRegisterResponse = await fetch(`${baseUrl}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loginId: `dbother${suffix}`,
+      password: 'database-test-password!',
+      nickname: `다른사용자${suffix}`,
+    }),
+  });
+  const otherRegisterBody = await otherRegisterResponse.text();
+  assert.equal(otherRegisterResponse.status, 201, otherRegisterBody);
+  const otherSession = JSON.parse(otherRegisterBody);
+  otherUserId = otherSession.user.id;
+
+  await database.query(
+    `INSERT INTO expiration_scans
+      (id, "userId", status, "createdAt", "updatedAt")
+     VALUES ($1, $2, 'NEEDS_REVIEW', NOW(), NOW())`,
+    [scanId, testUserId],
+  );
+
+  const authHeaders = {
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+
+  const createResponse = await fetch(`${baseUrl}/expiration-items`, {
+    method: 'POST',
+    headers: authHeaders,
     body: JSON.stringify({
       scanId,
       name: 'DB 연동 테스트 식재료',
@@ -106,11 +146,55 @@ async function main() {
   assert.equal(created.expirationDate, null);
   assert.equal(created.purchasedAt, todayInSeoul());
 
+  const otherListResponse = await fetch(`${baseUrl}/expiration-items`, {
+    headers: { Authorization: `Bearer ${otherSession.accessToken}` },
+  });
+  assert.equal(otherListResponse.status, 200);
+  const otherItems = await otherListResponse.json();
+  assert.equal(otherItems.some((item) => item.id === created.id), false);
+
+  const forbiddenUpdateResponse = await fetch(
+    `${baseUrl}/expiration-items/${created.id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${otherSession.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: '다른 사용자의 수정 시도' }),
+    },
+  );
+  assert.equal(forbiddenUpdateResponse.status, 404);
+
+  const forbiddenDeleteResponse = await fetch(
+    `${baseUrl}/expiration-items/${created.id}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${otherSession.accessToken}` },
+    },
+  );
+  assert.equal(forbiddenDeleteResponse.status, 404);
+
+  const forbiddenRecipeResponse = await fetch(`${baseUrl}/recipe-suggestions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${otherSession.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      itemIds: [created.id],
+      servings: 2,
+      maxCookingMinutes: 30,
+      assumeBasicSeasonings: true,
+    }),
+  });
+  assert.equal(forbiddenRecipeResponse.status, 404);
+
   const updateResponse = await fetch(
     `${baseUrl}/expiration-items/${created.id}`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         name: '수정된 DB 연동 식재료',
         quantity: '2',
@@ -131,7 +215,7 @@ async function main() {
 
   const duplicateResponse = await fetch(`${baseUrl}/expiration-items`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders,
     body: JSON.stringify({
       scanId,
       name: '중복 등록',
@@ -150,7 +234,7 @@ async function main() {
     `${baseUrl}/expiration-items/${itemToMove.id}`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ section: 'USE_SOON' }),
     },
   );
@@ -160,7 +244,9 @@ async function main() {
   assert.equal(moved.section, 'USE_SOON');
   assert.equal(moved.sortOrder, 3);
 
-  const listResponse = await fetch(`${baseUrl}/expiration-items`);
+  const listResponse = await fetch(`${baseUrl}/expiration-items`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   assert.equal(listResponse.status, 200);
   const items = await listResponse.json();
   assert.ok(items.some((item) => item.id === created.id));
@@ -180,7 +266,7 @@ async function main() {
 
   const deleteResponse = await fetch(
     `${baseUrl}/expiration-items/${created.id}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
   );
   assert.equal(deleteResponse.status, 204);
 
@@ -195,10 +281,56 @@ async function main() {
   assert.equal(remainingItems.rows[0].count, 0);
   assert.equal(remainingScans.rows[0].count, 0);
 
+  const wrongPasswordChangeResponse = await fetch(`${baseUrl}/auth/password`, {
+    method: 'PATCH',
+    headers: authHeaders,
+    body: JSON.stringify({
+      currentPassword: 'wrong-password!',
+      newPassword: 'changed-database-password!',
+    }),
+  });
+  assert.equal(wrongPasswordChangeResponse.status, 401);
+
+  const passwordChangeResponse = await fetch(`${baseUrl}/auth/password`, {
+    method: 'PATCH',
+    headers: authHeaders,
+    body: JSON.stringify({
+      currentPassword: 'database-test-password!',
+      newPassword: 'changed-database-password!',
+    }),
+  });
+  assert.equal(passwordChangeResponse.status, 204);
+
+  const revokedAccessResponse = await fetch(`${baseUrl}/auth/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  assert.equal(revokedAccessResponse.status, 401);
+
+  const revokedRefreshResponse = await fetch(`${baseUrl}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: session.refreshToken }),
+  });
+  assert.equal(revokedRefreshResponse.status, 401);
+
+  const oldPasswordLoginResponse = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loginId: session.user.loginId, password: 'database-test-password!' }),
+  });
+  assert.equal(oldPasswordLoginResponse.status, 401);
+
+  const newPasswordLoginResponse = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loginId: session.user.loginId, password: 'changed-database-password!' }),
+  });
+  assert.equal(newPasswordLoginResponse.status, 200);
+
   if (server.exitCode && server.exitCode !== 0) {
     throw new Error(serverError || `Backend exited with ${server.exitCode}.`);
   }
-  console.log('Database integration, update, section move, and expiration sorting test passed.');
+  console.log('Database integration, ownership, expiration sorting, and password revocation test passed.');
 }
 
 main()
@@ -208,7 +340,9 @@ main()
   })
   .finally(async () => {
     if (server && server.exitCode === null) server.kill();
-    if (databaseConnected) {
+    if (databaseConnected && testUserId) {
+      await database.query('DELETE FROM users WHERE id = $1', [testUserId]);
+    } else if (databaseConnected) {
       await database.query(
         'DELETE FROM expiration_items WHERE "scanId" = ANY($1::uuid[])',
         [allScanIds],
@@ -217,6 +351,9 @@ main()
         'DELETE FROM expiration_scans WHERE id = ANY($1::uuid[])',
         [allScanIds],
       );
-      await database.end();
     }
+    if (databaseConnected && otherUserId) {
+      await database.query('DELETE FROM users WHERE id = $1', [otherUserId]);
+    }
+    if (databaseConnected) await database.end();
   });

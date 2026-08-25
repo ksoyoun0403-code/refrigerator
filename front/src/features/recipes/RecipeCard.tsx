@@ -1,10 +1,18 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Button } from '../../design-system/Button';
 import { colors, interaction, radii, spacing, typography } from '../../design-system/tokens';
-import { RecipeSuggestion } from './types';
+import { RecipeConsumptionResult, RecipeSuggestion } from './types';
+import { RecipeConsumptionSheet } from './RecipeConsumptionSheet';
+import { RecipeAvailabilitySheet } from './RecipeAvailabilitySheet';
+
+const bookmarkIcon = require('../../../assets/icons/bookmark.png');
+const bookmarkFilledIcon = require('../../../assets/icons/bookmark-filled.png');
 
 type Props = {
   bookmarkState?: 'idle' | 'saved' | 'loading';
   onBookmarkPress?(): void;
+  onIngredientsConsumed?(result: RecipeConsumptionResult): void;
   recipe: RecipeSuggestion;
   savedAt?: string;
 };
@@ -12,9 +20,12 @@ type Props = {
 export function RecipeCard({
   bookmarkState = 'idle',
   onBookmarkPress,
+  onIngredientsConsumed,
   recipe,
   savedAt,
 }: Props) {
+  const [isConsumptionOpen, setIsConsumptionOpen] = useState(false);
+  const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
   const isSaved = bookmarkState === 'saved';
   const isBookmarkLoading = bookmarkState === 'loading';
 
@@ -48,9 +59,11 @@ export function RecipeCard({
               <ActivityIndicator color={colors.brand.action} size="small" />
             ) : (
               <>
-                <Text style={[styles.bookmarkIcon, isSaved && styles.bookmarkTextSaved]}>
-                  {isSaved ? '★' : '☆'}
-                </Text>
+                <Image
+                  resizeMode="contain"
+                  source={isSaved ? bookmarkFilledIcon : bookmarkIcon}
+                  style={[styles.bookmarkIcon, { tintColor: isSaved ? colors.brand.action : colors.text.secondary }]}
+                />
                 <Text style={[styles.bookmarkLabel, isSaved && styles.bookmarkTextSaved]}>
                   {isSaved ? '저장됨' : '저장'}
                 </Text>
@@ -112,6 +125,10 @@ export function RecipeCard({
           ))}
         </View>
       )}
+      <Button label="보유 재료 확인" onPress={() => setIsAvailabilityOpen(true)} style={styles.availabilityButton} variant="secondary" />
+      <Button label="이 레시피로 요리하기" onPress={() => setIsConsumptionOpen(true)} style={styles.cookButton} />
+      <RecipeAvailabilitySheet onClose={() => setIsAvailabilityOpen(false)} recipe={recipe} visible={isAvailabilityOpen} />
+      <RecipeConsumptionSheet onClose={() => setIsConsumptionOpen(false)} onConsumed={onIngredientsConsumed} recipe={recipe} visible={isConsumptionOpen} />
     </View>
   );
 }
@@ -143,7 +160,7 @@ const styles = StyleSheet.create({
   savedAt: { color: colors.text.muted, ...typography.caption },
   bookmarkButton: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.medium, borderWidth: 1, justifyContent: 'center', minHeight: interaction.minimumTouchSize, minWidth: 58, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   bookmarkButtonSaved: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary },
-  bookmarkIcon: { color: colors.text.secondary, fontSize: 18, lineHeight: 20 },
+  bookmarkIcon: { height: 22, width: 18 },
   bookmarkLabel: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
   bookmarkTextSaved: { color: colors.brand.action },
   pressed: { opacity: interaction.pressedOpacity },
@@ -162,4 +179,6 @@ const styles = StyleSheet.create({
   safetySection: { backgroundColor: colors.dangerSoft, borderRadius: radii.medium, marginTop: spacing.lg, padding: spacing.md },
   safetyTitle: { color: colors.danger, ...typography.label, marginBottom: spacing.xs },
   safetyText: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },
+  cookButton: { marginTop: spacing.lg },
+  availabilityButton: { marginTop: spacing.lg },
 });

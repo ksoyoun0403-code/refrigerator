@@ -1,4 +1,4 @@
-import { fetch } from 'expo/fetch';
+import { authenticatedFetch } from '../auth/authenticatedFetch';
 import { RecipeSuggestion, SavedRecipe } from './types';
 
 const API_BASE_URL =
@@ -29,7 +29,7 @@ export function recipeIdentity(recipe: RecipeSuggestion) {
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await authenticatedFetch(url, init);
   } catch {
     throw new Error('Backend에 연결하지 못했어요. 서버 실행 상태를 확인해주세요.');
   }

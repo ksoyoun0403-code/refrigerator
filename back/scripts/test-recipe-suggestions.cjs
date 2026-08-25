@@ -40,6 +40,45 @@ test('validates and deduplicates selected item ids', () => {
   assert.deepEqual(result.itemIds, [ITEM_ID]);
 });
 
+test('accepts up to 10 servings and directly entered cooking minutes', () => {
+  const result = validateRecipeSuggestionRequest({
+    itemIds: [ITEM_ID],
+    servings: 10,
+    maxCookingMinutes: 120,
+    assumeBasicSeasonings: true,
+  });
+
+  assert.equal(result.servings, 10);
+  assert.equal(result.maxCookingMinutes, 120);
+  assert.equal(validateRecipeSuggestionRequest({
+    itemIds: [ITEM_ID],
+    servings: 6,
+    maxCookingMinutes: 20,
+    assumeBasicSeasonings: true,
+  }).maxCookingMinutes, 20);
+});
+
+test('rejects servings above 10 and cooking times outside the supported range', () => {
+  assert.throws(
+    () => validateRecipeSuggestionRequest({
+      itemIds: [ITEM_ID],
+      servings: 11,
+      maxCookingMinutes: 120,
+      assumeBasicSeasonings: true,
+    }),
+    /1~10/,
+  );
+  assert.throws(
+    () => validateRecipeSuggestionRequest({
+      itemIds: [ITEM_ID],
+      servings: 10,
+      maxCookingMinutes: 121,
+      assumeBasicSeasonings: true,
+    }),
+    /15~120/,
+  );
+});
+
 test('rejects an empty ingredient selection', () => {
   assert.throws(
     () =>
@@ -109,6 +148,26 @@ test('limits each recipe group to two results', () => {
   ]);
 });
 
+test('excludes an existing recipe title despite spacing and letter case', () => {
+  const result = normalizeRecipeSuggestionGroups(
+    {
+      availableOnly: [
+        recipe({ title: '두부 구이' }),
+        recipe({ title: '새로운 두부 요리' }),
+      ],
+      needsFewMore: [],
+    },
+    {
+      servings: 2,
+      maxCookingMinutes: 30,
+      assumeBasicSeasonings: true,
+      excludedTitles: [' 두부구이 '],
+    },
+  );
+
+  assert.deepEqual(result.availableOnly.map(({ title }) => title), ['새로운 두부 요리']);
+});
+
 test('extracts structured output text from a Responses API result', () => {
   const text = extractOpenAIOutputText({
     output: [{ content: [{ type: 'output_text', text: '{"availableOnly":[]}' }] }],
@@ -157,6 +216,7 @@ test('sends a Responses API structured-output request without an SDK', async () 
       servings: 2,
       maxCookingMinutes: 30,
       assumeBasicSeasonings: true,
+      excludedTitles: ['두부 스테이크'],
     });
 
     assert.equal(requestBody.model, 'gpt-5-mini');
@@ -165,6 +225,7 @@ test('sends a Responses API structured-output request without an SDK', async () 
     assert.equal(requestBody.max_output_tokens, 4000);
     assert.equal(requestBody.text.format.type, 'json_schema');
     assert.equal(requestBody.text.format.strict, true);
+    assert.deepEqual(JSON.parse(requestBody.input[1].content).excludedTitles, ['두부 스테이크']);
     assert.equal(
       requestBody.text.format.schema.properties.availableOnly.maxItems,
       2,

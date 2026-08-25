@@ -101,7 +101,7 @@ export function recipeFingerprint(recipe: RecipeSuggestion) {
   return createHash('sha256').update(JSON.stringify(recipe)).digest('hex');
 }
 
-function ingredientNames(recipe: RecipeSuggestion) {
+export function ingredientNames(recipe: RecipeSuggestion) {
   return [
     ...new Set(
       [...recipe.usedIngredients, ...recipe.missingIngredients].map(({ name }) =>

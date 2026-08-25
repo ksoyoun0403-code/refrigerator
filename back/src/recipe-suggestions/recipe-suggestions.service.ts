@@ -16,6 +16,7 @@ import { validateRecipeSuggestionRequest } from './recipe-suggestion-validator';
 @Injectable()
 export class RecipeSuggestionsService {
   private readonly logger = new Logger(RecipeSuggestionsService.name);
+  private static readonly MAX_EXCLUDED_TITLES = 30;
 
   constructor(
     @Inject(RECIPE_GENERATOR)
@@ -23,18 +24,26 @@ export class RecipeSuggestionsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async generate(input: unknown): Promise<RecipeSuggestionResponse> {
+  async generate(userId: string, input: unknown): Promise<RecipeSuggestionResponse> {
     const request = validateRecipeSuggestionRequest(input);
-    const items = await this.prisma.client.expirationItem.findMany({
-      where: { id: { in: request.itemIds } },
-      select: {
-        id: true,
-        name: true,
-        quantity: true,
-        unit: true,
-        expirationDate: true,
-      },
-    });
+    const [items, recentRecipePosts] = await Promise.all([
+      this.prisma.client.expirationItem.findMany({
+        where: { userId, id: { in: request.itemIds } },
+        select: {
+          id: true,
+          name: true,
+          quantity: true,
+          unit: true,
+          expirationDate: true,
+        },
+      }),
+      this.prisma.client.recipePost.findMany({
+        where: { authorId: userId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: RecipeSuggestionsService.MAX_EXCLUDED_TITLES,
+        select: { title: true },
+      }),
+    ]);
 
     if (items.length !== request.itemIds.length) {
       throw new NotFoundException(
@@ -59,6 +68,7 @@ export class RecipeSuggestionsService {
         servings: request.servings,
         maxCookingMinutes: request.maxCookingMinutes,
         assumeBasicSeasonings: request.assumeBasicSeasonings,
+        excludedTitles: recentRecipePosts.map(({ title }) => title),
       });
       return { ...suggestions, generatedAt: new Date().toISOString() };
     } catch (error) {

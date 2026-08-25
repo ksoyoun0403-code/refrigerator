@@ -41,7 +41,15 @@ if not exist "!ADB_EXE!" (
   goto :failed
 )
 
-echo [1/8] Checking the USB debugging device...
+rem Gradle needs the SDK root even when adb.exe was found through the default
+rem LocalAppData path. Expo prebuild can recreate android/local.properties, so
+rem provide the SDK location through the process environment on every launch.
+for %%I in ("!ADB_EXE!") do set "ANDROID_PLATFORM_TOOLS=%%~dpI"
+for %%I in ("!ANDROID_PLATFORM_TOOLS!..") do set "ANDROID_SDK_DIR=%%~fI"
+set "ANDROID_HOME=!ANDROID_SDK_DIR!"
+set "ANDROID_SDK_ROOT=!ANDROID_SDK_DIR!"
+
+echo [1/9] Checking the USB debugging device...
 "!ADB_EXE!" start-server >nul 2>&1
 
 rem A broken ADB server can block `adb devices` indefinitely. Probe it with
@@ -88,7 +96,7 @@ goto :find_device
 
 echo       Device: !DEVICE_SERIAL!
 
-echo [2/8] Configuring ADB reverse ports...
+echo [2/9] Configuring ADB reverse ports...
 "!ADB_EXE!" -s "!DEVICE_SERIAL!" reverse tcp:8081 tcp:8081 >nul
 if errorlevel 1 (
   echo [ERROR] Failed to reverse the Metro port.
@@ -100,7 +108,7 @@ if errorlevel 1 (
   goto :failed
 )
 
-echo [3/8] Detecting project changes...
+echo [3/9] Detecting project changes...
 if not exist "%CHANGE_SCRIPT%" (
   echo [ERROR] Change detection script was not found.
   goto :failed
@@ -121,7 +129,11 @@ if "!MYDISH_RESTART_BACKEND!"=="1" echo       Backend changes detected: restart 
 if "!MYDISH_RESTART_METRO!"=="1" echo       Frontend environment or dependency changes detected: Metro restart required.
 if "!MYDISH_REBUILD_ANDROID!"=="1" echo       Android native or frontend dependency changes detected: rebuild required.
 
-echo [4/8] Checking the backend...
+echo [4/9] Checking PostgreSQL...
+call :ensure_postgres
+if errorlevel 1 goto :failed
+
+echo [5/9] Checking the backend...
 call :url_ready "%BACKEND_URL%"
 if errorlevel 1 (
   echo       Starting the backend in a separate window.
@@ -136,9 +148,23 @@ if errorlevel 1 (
   echo       Reusing the running backend.
 )
 
-echo [5/8] Checking the Android debug app...
-"!ADB_EXE!" -s "!DEVICE_SERIAL!" shell pm path "%APP_PACKAGE%" 2>nul | findstr /b /c:"package:" >nul
+echo [6/9] Checking the Android debug app...
+set "MYDISH_ADB=!ADB_EXE!"
+set "MYDISH_DEVICE=!DEVICE_SERIAL!"
+set "MYDISH_PACKAGE=%APP_PACKAGE%"
+powershell.exe -NoProfile -Command "$psi = [Diagnostics.ProcessStartInfo]::new(); $psi.FileName = $env:MYDISH_ADB; $psi.Arguments = '-s \"{0}\" shell pm path \"{1}\"' -f $env:MYDISH_DEVICE, $env:MYDISH_PACKAGE; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.CreateNoWindow = $true; $p = [Diagnostics.Process]::Start($psi); if (-not $p.WaitForExit(10000)) { $p.Kill(); exit 124 }; $output = $p.StandardOutput.ReadToEnd(); if ($p.ExitCode -eq 0 -and $output -match '(?m)^package:') { exit 0 }; exit 1" >nul 2>&1
 set "ANDROID_APP_MISSING=!ERRORLEVEL!"
+if "!ANDROID_APP_MISSING!"=="124" (
+  echo       Android package query timed out. Restarting ADB before rebuilding.
+  call :restart_adb_for_install
+  if errorlevel 1 (
+    echo [ERROR] Android device did not reconnect after the ADB restart.
+    goto :failed
+  )
+  "!ADB_EXE!" -s "!DEVICE_SERIAL!" reverse tcp:8081 tcp:8081 >nul
+  "!ADB_EXE!" -s "!DEVICE_SERIAL!" reverse tcp:3000 tcp:3000 >nul
+  set "ANDROID_APP_MISSING=1"
+)
 if "!MYDISH_REBUILD_ANDROID!"=="1" (
   set "ANDROID_BUILD_REQUIRED=1"
 ) else if not "!ANDROID_APP_MISSING!"=="0" (
@@ -160,9 +186,10 @@ if "!ANDROID_BUILD_REQUIRED!"=="1" (
   popd
 
   echo       Installing the current debug app on the phone.
-  "!ADB_EXE!" -s "!DEVICE_SERIAL!" install --no-incremental -r "!DEBUG_APK!"
+  set "MYDISH_APK=!DEBUG_APK!"
+  call :install_debug_apk
   if errorlevel 1 (
-    echo       APK transfer failed. Restarting ADB and retrying once.
+    echo       APK transfer failed or timed out. Restarting ADB and retrying once.
     call :restart_adb_for_install
     if errorlevel 1 (
       echo [ERROR] Android device did not reconnect after the ADB restart.
@@ -170,7 +197,7 @@ if "!ANDROID_BUILD_REQUIRED!"=="1" (
     )
     "!ADB_EXE!" -s "!DEVICE_SERIAL!" reverse tcp:8081 tcp:8081 >nul
     "!ADB_EXE!" -s "!DEVICE_SERIAL!" reverse tcp:3000 tcp:3000 >nul
-    "!ADB_EXE!" -s "!DEVICE_SERIAL!" install --no-incremental -r "!DEBUG_APK!"
+    call :install_debug_apk
     if errorlevel 1 (
       echo [ERROR] Failed to install the Android debug app after the ADB retry.
       goto :failed
@@ -180,7 +207,7 @@ if "!ANDROID_BUILD_REQUIRED!"=="1" (
   echo       Reusing the installed debug app.
 )
 
-echo [6/8] Checking Metro Bundler...
+echo [7/9] Checking Metro Bundler...
 call :url_ready "%METRO_URL%"
 if errorlevel 1 (
   echo       Starting Metro in a separate window.
@@ -195,7 +222,7 @@ if errorlevel 1 (
   echo       Reusing the running Metro server.
 )
 
-echo [7/8] Launching MyDish on the phone...
+echo [8/9] Launching MyDish on the phone...
 "!ADB_EXE!" -s "!DEVICE_SERIAL!" shell am force-stop "%APP_PACKAGE%" >nul
 "!ADB_EXE!" -s "!DEVICE_SERIAL!" shell am start -W -a android.intent.action.VIEW -d "%DEBUG_URL%" "%APP_PACKAGE%" >nul
 if errorlevel 1 (
@@ -203,7 +230,7 @@ if errorlevel 1 (
   goto :failed
 )
 
-echo [8/8] Saving the successful change baseline...
+echo [9/9] Saving the successful change baseline...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CHANGE_SCRIPT%" -ProjectRoot "%PROJECT_ROOT%." -Mode Commit
 if errorlevel 1 (
   echo [ERROR] The launcher state could not be saved.
@@ -220,6 +247,52 @@ echo.
 echo This window will close automatically.
 ping 127.0.0.1 -n 5 >nul
 exit /b 0
+
+:ensure_postgres
+docker.exe info >nul 2>&1
+if errorlevel 1 (
+  set "DOCKER_DESKTOP=%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+  if not exist "!DOCKER_DESKTOP!" (
+    echo [ERROR] Docker Desktop is not running and could not be found.
+    echo Start Docker Desktop, then run this launcher again.
+    exit /b 1
+  )
+  echo       Docker Desktop is not running. Starting it automatically.
+  powershell.exe -NoProfile -Command "Start-Process -FilePath (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe') -WindowStyle Hidden"
+  for /L %%I in (1,1,90) do (
+    docker.exe info >nul 2>&1
+    if not errorlevel 1 goto :docker_ready
+    ping 127.0.0.1 -n 2 >nul
+  )
+  echo [ERROR] Docker Desktop did not become ready within 90 seconds.
+  exit /b 1
+)
+
+:docker_ready
+pushd "%PROJECT_ROOT%"
+docker.exe compose up -d postgres
+if errorlevel 1 (
+  popd
+  echo [ERROR] PostgreSQL could not be started.
+  exit /b 1
+)
+
+for /L %%I in (1,1,45) do (
+  docker.exe compose exec -T postgres sh -c "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\"" >nul 2>&1
+  if not errorlevel 1 (
+    popd
+    echo       PostgreSQL is ready.
+    exit /b 0
+  )
+  ping 127.0.0.1 -n 2 >nul
+)
+popd
+echo [ERROR] PostgreSQL did not become ready within 45 seconds.
+exit /b 1
+
+:install_debug_apk
+powershell.exe -NoProfile -Command "$psi = [Diagnostics.ProcessStartInfo]::new(); $psi.FileName = $env:MYDISH_ADB; $psi.Arguments = '-s \"{0}\" install --no-streaming -r \"{1}\"' -f $env:MYDISH_DEVICE, $env:MYDISH_APK; $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $p = [Diagnostics.Process]::Start($psi); if (-not $p.WaitForExit(120000)) { $p.Kill(); exit 124 }; exit $p.ExitCode"
+exit /b %ERRORLEVEL%
 
 :url_ready
 curl.exe -fsS --max-time 2 "%~1" >nul 2>&1
