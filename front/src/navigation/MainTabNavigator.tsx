@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   headerLogoFrame: { alignItems: 'center', height: 40, justifyContent: 'center', overflow: 'hidden', width: 140 },
   headerLogo: { height: 110, width: 220 },
   compactHeaderLogoFrame: { height: 36, width: 112 },
-  compactHeaderLogo: { height: 36, width: 112 },
+  compactHeaderLogo: { height: 88, width: 176 },
   backButton: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 48, minWidth: 76 },
   backIcon: { height: 14, tintColor: colors.brand.action, width: 9 },
   backButtonDisabled: { opacity: 0.25 },
