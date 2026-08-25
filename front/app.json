@@ -3,6 +3,7 @@
     "name": "mydish",
     "slug": "mydish",
     "version": "0.1.0",
+    "icon": "./assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
@@ -14,7 +15,8 @@
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#FFF8EE"
+        "backgroundColor": "#FFF8EE",
+        "foregroundImage": "./assets/app-icon-foreground.png"
       }
     },
     "plugins": [
