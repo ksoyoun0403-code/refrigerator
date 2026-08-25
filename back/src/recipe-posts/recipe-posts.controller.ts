@@ -13,8 +13,9 @@ export class RecipePostsController {
   findAll(
     @CurrentUser() user: AuthenticatedUser,
     @Query('q') query?: string,
+    @Query('sort') sort?: string,
   ) {
-    return this.recipePostsService.findAll(user.id, query);
+    return this.recipePostsService.findAll(user.id, query, sort);
   }
 
   @Get('mine')

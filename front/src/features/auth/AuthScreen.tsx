@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +16,8 @@ import { colors, radii, spacing, typography } from '../../design-system/tokens';
 import { login, register } from './authApi';
 import { AuthSession } from './types';
 import { clearSavedLoginId, loadSavedLoginId, saveLoginId } from './authStorage';
+
+const checkIcon = require('../../../assets/icons/check.png');
 
 type AuthMode = 'login' | 'register';
 
@@ -111,7 +114,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated(session: AuthS
                 style={styles.rememberRow}
               >
                 <View style={[styles.rememberBox, rememberLoginId && styles.rememberBoxChecked]}>
-                  {rememberLoginId && <Text style={styles.rememberCheck}>✓</Text>}
+                  {rememberLoginId && <Image resizeMode="contain" source={checkIcon} style={styles.rememberCheck} />}
                 </View>
                 <Text style={styles.rememberText}>아이디 저장</Text>
               </Pressable>
@@ -223,7 +226,7 @@ const styles = StyleSheet.create({
   rememberRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 44 },
   rememberBox: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: 6, borderWidth: 1.5, height: 24, justifyContent: 'center', width: 24 },
   rememberBoxChecked: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
-  rememberCheck: { color: colors.text.inverse, fontSize: 15, fontWeight: '900' },
+  rememberCheck: { height: 15, tintColor: colors.text.inverse, width: 15 },
   rememberText: { color: colors.text.secondary, ...typography.label },
   recoveryNotice: { backgroundColor: colors.warningSoft, borderRadius: radii.medium, padding: spacing.md },
   recoveryTitle: { color: colors.warning, ...typography.label },

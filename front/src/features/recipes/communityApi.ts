@@ -3,10 +3,11 @@ import { RecipeComment, RecipeCommentPage, RecipePost, RecipePostListItem, Recip
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:3000/v1';
 
-export function getRecipePosts(query = '') {
+export function getRecipePosts(query = '', sort: 'popular' | 'latest' = 'popular') {
   const search = query.trim();
-  const suffix = search ? `?q=${encodeURIComponent(search)}` : '';
-  return request<RecipePostListItem[]>(`${API_BASE_URL}/recipe-posts${suffix}`);
+  const params = new URLSearchParams({ sort });
+  if (search) params.set('q', search);
+  return request<RecipePostListItem[]>(`${API_BASE_URL}/recipe-posts?${params}`);
 }
 
 export function getRecipePost(id: string) {

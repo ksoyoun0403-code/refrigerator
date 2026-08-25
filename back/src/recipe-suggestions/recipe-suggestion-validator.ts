@@ -34,17 +34,17 @@ export function validateRecipeSuggestionRequest(
   }
 
   const servings = input.servings;
-  if (!Number.isInteger(servings) || Number(servings) < 1 || Number(servings) > 6) {
-    throw new BadRequestException('인원수는 1~6명으로 선택해주세요.');
+  if (!Number.isInteger(servings) || Number(servings) < 1 || Number(servings) > 10) {
+    throw new BadRequestException('인원수는 1~10명으로 선택해주세요.');
   }
 
   const maxCookingMinutes = input.maxCookingMinutes;
   if (
     !Number.isInteger(maxCookingMinutes) ||
-    Number(maxCookingMinutes) < 10 ||
-    Number(maxCookingMinutes) > 180
+    Number(maxCookingMinutes) < 15 ||
+    Number(maxCookingMinutes) > 120
   ) {
-    throw new BadRequestException('조리 시간은 10~180분으로 선택해주세요.');
+    throw new BadRequestException('조리 시간은 15~120분으로 입력해주세요.');
   }
 
   if (typeof input.assumeBasicSeasonings !== 'boolean') {
@@ -65,6 +65,7 @@ export function normalizeRecipeSuggestionGroups(
     servings: number;
     maxCookingMinutes: number;
     assumeBasicSeasonings: boolean;
+    excludedTitles?: string[];
   },
 ): RecipeSuggestionGroups {
   if (!isRecord(input)) {
@@ -92,6 +93,7 @@ function normalizeGroup(
     servings: number;
     maxCookingMinutes: number;
     assumeBasicSeasonings: boolean;
+    excludedTitles?: string[];
   },
 ) {
   if (!Array.isArray(value)) {
@@ -102,6 +104,11 @@ function normalizeGroup(
     .map(parseRecipeSuggestion)
     .filter((recipe): recipe is RecipeSuggestion => {
       if (!recipe) return false;
+      if (
+        options.excludedTitles?.some(
+          (title) => normalizeTitle(title) === normalizeTitle(recipe.title),
+        )
+      ) return false;
       if (recipe.servings !== options.servings) return false;
       if (recipe.cookingMinutes > options.maxCookingMinutes) return false;
       if (!options.assumeBasicSeasonings && recipe.basicSeasonings.length > 0) {
@@ -120,6 +127,10 @@ function normalizeGroup(
             recipe.missingIngredients.length <= 3;
     })
     .slice(0, MAX_RECIPES_PER_GROUP);
+}
+
+function normalizeTitle(title: string) {
+  return title.trim().replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
 }
 
 export function parseRecipeSuggestion(value: unknown): RecipeSuggestion | null {

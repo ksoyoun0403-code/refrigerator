@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Notifications from 'expo-notifications';
-import { BackHandler, Image, ImageSourcePropType, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, BackHandler, Image, ImageSourcePropType, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, interaction, spacing } from '../design-system/tokens';
 import { ExpirationHomeScreen } from '../features/expiration/ExpirationHomeScreen';
@@ -12,7 +12,6 @@ import { MyPageScreen } from '../features/auth/MyPageScreen';
 type MainTab = 'refrigerator' | 'recipes' | 'community';
 type Destination = { tab: MainTab; communityView: 'feed' | 'cookbook' };
 const mydishWordmark = require('../../assets/splash/mydish-wordmark-chef.png');
-const backIcon = require('../../assets/icons/back.png');
 const refrigeratorIcon = require('../../assets/icons/refrigerator.png');
 const recipeGenerateIcon = require('../../assets/icons/recipe-generate.png');
 const sharedRecipesIcon = require('../../assets/icons/shared-recipes.png');
@@ -38,6 +37,11 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
     const openNotification = (response: Notifications.NotificationResponse | null) => {
       const data = response?.notification.request.content.data;
       if (data?.type !== 'mydish.expiration-reminder' || data.userId !== user.id) return;
+      setIsMyPageOpen(false);
+      setIsPasswordModalOpen(false);
+      setHistory([]);
+      setCommunityView('feed');
+      setCommunityBackSignal((current) => current + 1);
       setActiveTab('refrigerator');
       if (typeof data.itemId === 'string') setRequestedExpirationItemId(data.itemId);
     };
@@ -48,9 +52,19 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
 
   const navigate = (next: Destination) => {
     if (next.tab === activeTab && next.communityView === communityView) return;
-    setHistory((current) => [...current, { tab: activeTab, communityView }]);
+    if (next.tab === activeTab) {
+      setHistory((current) => [...current, { tab: activeTab, communityView }]);
+    } else {
+      // Bottom-tab switches are destinations, not a back-navigation stack.
+      setHistory([]);
+    }
     setActiveTab(next.tab);
     setCommunityView(next.communityView);
+  };
+
+  const closeCookbook = () => {
+    setHistory([]);
+    setCommunityView('feed');
   };
 
   const goBack = () => {
@@ -66,7 +80,17 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
       setCommunityBackSignal((current) => current + 1);
       return true;
     }
-    if (history.length === 0) return false;
+    if (history.length === 0) {
+      Alert.alert(
+        'MYDISH를 종료할까요?',
+        undefined,
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '종료', style: 'destructive', onPress: () => BackHandler.exitApp() },
+        ],
+      );
+      return true;
+    }
     const previous = history[history.length - 1];
     setHistory((current) => current.slice(0, -1));
     setActiveTab(previous.tab);
@@ -79,22 +103,10 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
     return () => subscription.remove();
   });
 
-  const canGoBack = isMyPageOpen || history.length > 0 || isCommunityDetailOpen;
-
   return (
     <SafeAreaView style={styles.root}>
       <View style={[styles.accountBar, isCompactWidth && styles.compactAccountBar]}>
-        <Pressable
-          accessibilityLabel="이전 화면으로"
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canGoBack }}
-          disabled={!canGoBack}
-          onPress={goBack}
-          style={[styles.backButton, isCompactWidth && styles.compactSideButton, !canGoBack && styles.backButtonDisabled]}
-        >
-          <Image resizeMode="contain" source={backIcon} style={styles.backIcon} />
-          <Text style={styles.backText}>뒤로</Text>
-        </Pressable>
+        <View style={[styles.headerSidePlaceholder, isCompactWidth && styles.compactSideButton]} />
         <View pointerEvents="box-none" style={styles.headerLogoContainer}>
           <Pressable
             accessibilityLabel="냉장고 탭으로 이동"
@@ -108,8 +120,8 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
             <Image accessibilityLabel="MYDISH" resizeMode="contain" source={mydishWordmark} style={[styles.headerLogo, isCompactWidth && styles.compactHeaderLogo]} />
           </Pressable>
         </View>
-        <Pressable accessibilityRole="button" disabled={isMyPageOpen} onPress={() => setIsMyPageOpen(true)} style={[styles.myPageButton, isCompactWidth && styles.compactSideButton, isMyPageOpen && styles.backButtonDisabled]}>
-          <Text style={styles.myPageText}>My Page</Text>
+        <Pressable accessibilityRole="button" onPress={() => setIsMyPageOpen((current) => !current)} style={[styles.myPageButton, isCompactWidth && styles.compactSideButton, isCompactWidth && styles.compactMyPageButton]}>
+          <Text style={styles.myPageText}>{isMyPageOpen ? '닫기' : 'My Page'}</Text>
         </Pressable>
       </View>
       {!isMyPageOpen && <View accessibilityRole="tablist" style={styles.tabBar}>
@@ -180,6 +192,7 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
           backSignal={communityBackSignal}
           isActive={activeTab === 'community'}
           onDetailStateChange={setIsCommunityDetailOpen}
+          onCloseCookbook={closeCookbook}
           onOpenCookbook={() => navigate({ tab: 'community', communityView: 'cookbook' })}
           view={communityView}
         />
@@ -297,15 +310,13 @@ const styles = StyleSheet.create({
   accountBar: { alignItems: 'center', backgroundColor: colors.surface, flexDirection: 'row', minHeight: 64, paddingHorizontal: spacing.md, position: 'relative' },
   compactAccountBar: { paddingHorizontal: spacing.sm },
   headerLogoContainer: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 },
-  headerLogoFrame: { alignItems: 'center', height: 40, justifyContent: 'center', overflow: 'hidden', width: 140 },
-  headerLogo: { height: 110, width: 220 },
-  compactHeaderLogoFrame: { height: 36, width: 112 },
-  compactHeaderLogo: { height: 88, width: 176 },
-  backButton: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: 48, minWidth: 76 },
-  backIcon: { height: 14, tintColor: colors.brand.action, width: 9 },
-  backButtonDisabled: { opacity: 0.25 },
-  backText: { color: colors.brand.action, fontSize: 14, fontWeight: '800' },
-  myPageButton: { alignItems: 'flex-end', justifyContent: 'center', marginLeft: 'auto', minHeight: 48, minWidth: 76 },
+  headerLogoFrame: { alignItems: 'center', height: 48, justifyContent: 'center', overflow: 'hidden', width: 168 },
+  headerLogo: { height: 132, width: 264 },
+  compactHeaderLogoFrame: { height: 43, width: 134 },
+  compactHeaderLogo: { height: 106, width: 211 },
+  headerSidePlaceholder: { minHeight: 48, minWidth: 76 },
+  myPageButton: { alignItems: 'flex-end', justifyContent: 'center', marginLeft: 'auto', marginRight: spacing.md, minHeight: 48, minWidth: 76 },
+  compactMyPageButton: { marginRight: spacing.sm },
   myPageText: { color: colors.brand.action, fontSize: 14, fontWeight: '800' },
   compactSideButton: { minWidth: 64 },
   screen: { flex: 1 },

@@ -52,4 +52,5 @@ export type RecipeGenerationInput = Omit<
   'itemIds'
 > & {
   ingredients: RecipeIngredientInput[];
+  excludedTitles: string[];
 };

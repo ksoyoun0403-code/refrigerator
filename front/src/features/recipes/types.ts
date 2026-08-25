@@ -59,6 +59,7 @@ export type RecipeComment = {
   author: { id: string; nickname: string };
   content: string;
   isOwn: boolean;
+  canDelete: boolean;
   createdAt: string;
   updatedAt: string;
 };

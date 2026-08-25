@@ -1,5 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
+import * as Application from 'expo-application';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { Platform } from 'react-native';
 import { ExpirationItem } from './types';
 
@@ -8,6 +10,7 @@ const NOTIFICATION_TYPE = 'mydish.expiration-reminder';
 const SETTINGS_KEY_PREFIX = 'mydish.expiration-notification-settings.';
 const HISTORY_KEY_PREFIX = 'mydish.expiration-notification-history.';
 const MAX_HISTORY_SIZE = 1000;
+const PERMISSION_ONBOARDING_KEY = 'mydish.expiration-notification-permission-onboarding.v1';
 
 export type ExpirationReminderDay = 0 | 1 | 2;
 
@@ -26,6 +29,40 @@ export const DEFAULT_EXPIRATION_NOTIFICATION_SETTINGS: ExpirationNotificationSet
 };
 
 export type ExpirationNotificationStatus = 'enabled' | 'denied' | 'error';
+
+export async function hasShownExpirationNotificationPermissionOnboarding() {
+  return (await SecureStore.getItemAsync(PERMISSION_ONBOARDING_KEY)) === 'shown';
+}
+
+export async function markExpirationNotificationPermissionOnboardingShown() {
+  await SecureStore.setItemAsync(PERMISSION_ONBOARDING_KEY, 'shown');
+}
+
+export async function requestExpirationNotificationAccess(): Promise<ExpirationNotificationStatus> {
+  try {
+    await ensureNotificationChannel();
+    let permission = await Notifications.getPermissionsAsync();
+    if (!permission.granted && permission.canAskAgain) {
+      permission = await Notifications.requestPermissionsAsync();
+    }
+    if (!permission.granted) return 'denied';
+
+    if (Platform.OS === 'android' && Number(Platform.Version) >= 31) {
+      await openExactAlarmSettings();
+    }
+    return 'enabled';
+  } catch {
+    return 'error';
+  }
+}
+
+export async function openExactAlarmSettings() {
+  if (Platform.OS !== 'android' || Number(Platform.Version) < 31) return;
+  await IntentLauncher.startActivityAsync(
+    IntentLauncher.ActivityAction.REQUEST_SCHEDULE_EXACT_ALARM,
+    Application.applicationId ? { data: `package:${Application.applicationId}` } : undefined,
+  );
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -179,21 +216,20 @@ export function getExpirationReminderDate(
 }
 
 async function prepareNotifications() {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: '유통기한 알림',
-      description: '냉장고 식품의 유통기한이 임박하면 알려줍니다.',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#F97316',
-    });
-  }
-
-  let permission = await Notifications.getPermissionsAsync();
-  if (!permission.granted && permission.canAskAgain) {
-    permission = await Notifications.requestPermissionsAsync();
-  }
+  await ensureNotificationChannel();
+  const permission = await Notifications.getPermissionsAsync();
   return permission.granted;
+}
+
+async function ensureNotificationChannel() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+    name: '유통기한 알림',
+    description: '냉장고 식품의 유통기한이 임박하면 알려줍니다.',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#F97316',
+  });
 }
 
 function parseLocalDate(value: string | null) {

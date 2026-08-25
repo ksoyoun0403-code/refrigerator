@@ -11,7 +11,7 @@ export class RecipePostCommentsController {
 
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser, @Param('recipePostId') recipePostId: string, @Query('cursor') cursor?: string, @Query('limit') limit?: string) {
-    return this.commentsService.findAll(user.id, recipePostId, cursor, limit);
+    return this.commentsService.findAll(user.id, user.loginId, recipePostId, cursor, limit);
   }
 
   @Post()

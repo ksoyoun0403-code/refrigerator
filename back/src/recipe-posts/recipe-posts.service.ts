@@ -33,14 +33,22 @@ const UUID_PATTERN =
 export class RecipePostsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(userId: string, rawQuery?: string): Promise<RecipePostListItem[]> {
+  async findAll(userId: string, rawQuery?: string, rawSort?: string): Promise<RecipePostListItem[]> {
     const query = normalizeSearchQuery(rawQuery);
+    const sort = normalizeFeedSort(rawSort);
     const matchingIds = query
       ? await this.findMatchingPostIds(query)
       : undefined;
     const records = await this.prisma.client.recipePost.findMany({
       where: matchingIds ? { id: { in: matchingIds } } : undefined,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: sort === 'latest'
+        ? [{ createdAt: 'desc' }, { id: 'desc' }]
+        : [
+            { bookmarks: { _count: 'desc' } },
+            { comments: { _count: 'desc' } },
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
       take: 50,
       include: recipePostIncludeForUser(userId),
     });
@@ -256,6 +264,12 @@ function normalizeSearchQuery(rawQuery?: string) {
     throw new BadRequestException('검색어는 100자 이하여야 합니다.');
   }
   return query || undefined;
+}
+
+function normalizeFeedSort(rawSort?: string): 'popular' | 'latest' {
+  if (rawSort === undefined || rawSort === '' || rawSort === 'popular') return 'popular';
+  if (rawSort === 'latest') return 'latest';
+  throw new BadRequestException('정렬 기준은 popular 또는 latest여야 합니다.');
 }
 
 function validateRecipePostId(id: string) {

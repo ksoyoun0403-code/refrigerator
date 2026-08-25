@@ -15,7 +15,7 @@ const MAX_LIMIT = 50;
 export class RecipeCommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(userId: string, recipePostId: string, rawCursor?: string, rawLimit?: string): Promise<RecipeCommentPage> {
+  async findAll(userId: string, loginId: string, recipePostId: string, rawCursor?: string, rawLimit?: string): Promise<RecipeCommentPage> {
     this.validateId(recipePostId, '레시피');
     await this.ensurePostExists(recipePostId);
     const cursor = rawCursor?.trim();
@@ -31,7 +31,7 @@ export class RecipeCommentsService {
     const hasNext = records.length > limit;
     const page = hasNext ? records.slice(0, limit) : records;
     return {
-      items: page.map((record) => this.map(record, userId)),
+      items: page.map((record) => this.map(record, userId, isAdminLoginId(loginId))),
       nextCursor: hasNext ? page[page.length - 1].id : null,
     };
   }
@@ -61,11 +61,13 @@ export class RecipeCommentsService {
     return this.map(record, userId);
   }
 
-  async remove(userId: string, commentId: string) {
+  async remove(userId: string, loginId: string, commentId: string) {
     this.validateId(commentId, '댓글');
     const current = await this.prisma.client.recipeComment.findUnique({ where: { id: commentId } });
     if (!current) throw new NotFoundException('댓글을 찾을 수 없습니다.');
-    if (current.authorId !== userId) throw new ForbiddenException('내 댓글만 삭제할 수 있습니다.');
+    if (current.authorId !== userId && !isAdminLoginId(loginId)) {
+      throw new ForbiddenException('본인 또는 관리자만 댓글을 삭제할 수 있습니다.');
+    }
     await this.prisma.client.recipeComment.delete({ where: { id: commentId } });
   }
 
@@ -95,15 +97,26 @@ export class RecipeCommentsService {
     if (!UUID_PATTERN.test(id)) throw new BadRequestException(`유효한 ${label} ID가 필요합니다.`);
   }
 
-  private map(record: { id: string; recipePostId: string; content: string; createdAt: Date; updatedAt: Date; author: { id: string; nickname: string } }, userId: string): RecipeComment {
+  private map(record: { id: string; recipePostId: string; content: string; createdAt: Date; updatedAt: Date; author: { id: string; nickname: string } }, userId: string, isAdmin = false): RecipeComment {
+    const isOwn = record.author.id === userId;
     return {
       id: record.id,
       recipePostId: record.recipePostId,
       author: record.author,
       content: record.content,
-      isOwn: record.author.id === userId,
+      isOwn,
+      canDelete: isOwn || isAdmin,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
   }
+}
+
+function isAdminLoginId(loginId: string) {
+  const normalizedLoginId = loginId.trim().toLocaleLowerCase('en-US');
+  return (process.env.ADMIN_LOGIN_IDS ?? '')
+    .split(',')
+    .map((value) => value.trim().toLocaleLowerCase('en-US'))
+    .filter(Boolean)
+    .includes(normalizedLoginId);
 }

@@ -57,9 +57,7 @@ type EditProps = {
   onCancel(): void;
 };
 
-type Props = (RegistrationProps | ManualRegistrationProps | EditProps) & {
-  onFieldFocus?(field: 'name' | 'quantity' | 'expirationDate' | 'purchasedAt'): void;
-};
+type Props = RegistrationProps | ManualRegistrationProps | EditProps;
 
 export function ExpirationRegistrationForm(props: Props) {
   const editingItem = props.item;
@@ -163,7 +161,6 @@ export function ExpirationRegistrationForm(props: Props) {
         editable={!isSaving}
         maxLength={100}
         onChangeText={setName}
-        onFocus={() => props.onFieldFocus?.('name')}
         placeholder="예: 토마토"
         placeholderTextColor={colors.text.muted}
         selectionColor={colors.brand.primary}
@@ -177,7 +174,6 @@ export function ExpirationRegistrationForm(props: Props) {
           keyboardType="decimal-pad"
           maxLength={10}
           onChangeText={setQuantity}
-          onFocus={() => props.onFieldFocus?.('quantity')}
           selectionColor={colors.brand.primary}
           style={[styles.input, styles.quantityInput]}
           value={quantity}
@@ -235,7 +231,6 @@ export function ExpirationRegistrationForm(props: Props) {
         onChangeText={(value) =>
           setExpirationDate(formatExpirationDateInput(value))
         }
-        onFocus={() => props.onFieldFocus?.('expirationDate')}
         placeholder="YYYYMMDD (예: 20261201)"
         placeholderTextColor={colors.text.muted}
         selectionColor={colors.brand.primary}
@@ -250,7 +245,6 @@ export function ExpirationRegistrationForm(props: Props) {
             editable={!isSaving}
             maxLength={10}
             onChangeText={setPurchasedAt}
-            onFocus={() => props.onFieldFocus?.('purchasedAt')}
             placeholder="YYYY-MM-DD"
             placeholderTextColor={colors.text.muted}
             selectionColor={colors.brand.primary}

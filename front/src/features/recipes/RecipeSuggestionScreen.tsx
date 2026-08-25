@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,9 +27,8 @@ import { shareRecipePost } from './communityApi';
 import { generateRecipeSuggestions } from './recipeApi';
 import { RecipeConsumptionResult, RecipeSuggestion, RecipeSuggestionResult } from './types';
 
-const SERVING_OPTIONS = [1, 2, 3, 4] as const;
-const COOKING_TIME_OPTIONS = [20, 30, 45, 60] as const;
 const MAX_SELECTED_ITEMS = 12;
+const checkIcon = require('../../../assets/icons/check.png');
 
 type Props = {
   isActive: boolean;
@@ -40,8 +41,8 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [itemsLoadFailed, setItemsLoadFailed] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [servings, setServings] = useState(2);
-  const [maxCookingMinutes, setMaxCookingMinutes] = useState(30);
+  const [servingsInput, setServingsInput] = useState('1');
+  const [maxCookingMinutesInput, setMaxCookingMinutesInput] = useState('30');
   const [assumeBasicSeasonings, setAssumeBasicSeasonings] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<RecipeSuggestionResult>();
@@ -49,6 +50,11 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
   const [pendingShare, setPendingShare] = useState<RecipeSuggestion>();
   const [sharedRecipeKeys, setSharedRecipeKeys] = useState<Set<string>>(new Set());
   const [sharingRecipeKeys, setSharingRecipeKeys] = useState<Set<string>>(new Set());
+  const servings = Number(servingsInput);
+  const maxCookingMinutes = Number(maxCookingMinutesInput);
+  const isServingsValid = /^\d+$/.test(servingsInput) && Number.isInteger(servings) && servings >= 1 && servings <= 10;
+  const isCookingTimeValid = /^\d+$/.test(maxCookingMinutesInput) && Number.isInteger(maxCookingMinutes) && maxCookingMinutes >= 15 && maxCookingMinutes <= 120;
+  const areRecipeOptionsValid = isServingsValid && isCookingTimeValid;
 
   const loadItems = useCallback(async () => {
     const requestId = ++itemsRequestId.current;
@@ -109,6 +115,13 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
     setErrorMessage(undefined);
   };
 
+  const clearSelectedItems = () => {
+    if (isGenerating || selectedIds.size === 0) return;
+    setSelectedIds(new Set());
+    setResult(undefined);
+    setErrorMessage(undefined);
+  };
+
   const ingredientsConsumed = (consumption: RecipeConsumptionResult) => {
     const updates = new Map(consumption.updatedItems.map((item) => [item.id, item]));
     setItems((current) => current.flatMap((item) => {
@@ -120,7 +133,7 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
   };
 
   const generate = async () => {
-    if (isGenerating || selectedIds.size === 0) return;
+    if (isGenerating || selectedIds.size === 0 || !areRecipeOptionsValid) return;
     setIsGenerating(true);
     setResult(undefined);
     setErrorMessage(undefined);
@@ -185,9 +198,24 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
               <Text style={styles.retry}>다시 불러오기</Text>
             </Pressable>
           ) : (
-            <Text style={styles.selectionCount}>{selectedIds.size}개 선택</Text>
+            <View style={styles.selectionActions}>
+              <Text style={styles.selectionCount}>{selectedIds.size}개 선택</Text>
+              {selectedIds.size > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isGenerating}
+                  onPress={clearSelectedItems}
+                  style={({ pressed }) => [styles.clearSelectionButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.clearSelectionButtonText}>선택 모두 취소</Text>
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
+        {!itemsLoadFailed && (
+          <Text style={styles.selectionGuide}>레시피에 사용할 냉장고 재료를 최대 {MAX_SELECTED_ITEMS}개까지 선택할 수 있어요.</Text>
+        )}
         {isLoadingItems && items.length === 0 ? (
           <ActivityIndicator color={colors.brand.action} style={styles.itemsLoader} />
         ) : items.length === 0 ? (
@@ -214,7 +242,7 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
                   ]}
                 >
                   <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                    {selected && <Text style={styles.checkmark}>✓</Text>}
+                    {selected && <Image resizeMode="contain" source={checkIcon} style={styles.checkmarkIcon} />}
                   </View>
                   <Text numberOfLines={2} style={styles.ingredientName}>{item.name}</Text>
                   <Text style={styles.ingredientMeta}>
@@ -232,27 +260,29 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
         )}
 
         <View style={styles.optionsCard}>
-          <OptionRow
+          <NumberInputRow
+            errorMessage={isServingsValid ? undefined : '1~10명 사이로 입력해주세요.'}
             label="인원"
-            onSelect={(value) => {
-              setServings(value);
+            maxLength={2}
+            onChange={(value) => {
+              setServingsInput(value);
               setResult(undefined);
               setErrorMessage(undefined);
             }}
-            options={SERVING_OPTIONS}
-            selected={servings}
             suffix="명"
+            value={servingsInput}
           />
-          <OptionRow
+          <NumberInputRow
+            errorMessage={isCookingTimeValid ? undefined : '15~120분 사이로 입력해주세요.'}
             label="최대 조리 시간"
-            onSelect={(value) => {
-              setMaxCookingMinutes(value);
+            maxLength={3}
+            onChange={(value) => {
+              setMaxCookingMinutesInput(value);
               setResult(undefined);
               setErrorMessage(undefined);
             }}
-            options={COOKING_TIME_OPTIONS}
-            selected={maxCookingMinutes}
             suffix="분"
+            value={maxCookingMinutesInput}
           />
           <Pressable
             accessibilityRole="switch"
@@ -276,8 +306,8 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
 
         <Button
           accessibilityLabel={isGenerating ? 'AI 레시피 생성 중' : undefined}
-          disabled={selectedIds.size === 0}
-          label={selectedIds.size === 0 ? '재료를 먼저 선택해주세요' : 'AI 레시피 만들기'}
+          disabled={selectedIds.size === 0 || !areRecipeOptionsValid}
+          label={selectedIds.size === 0 ? '재료를 먼저 선택해주세요' : !areRecipeOptionsValid ? '인원과 조리 시간을 확인해주세요' : 'AI 레시피 만들기'}
           loading={isGenerating}
           onPress={() => void generate()}
           style={styles.generateButton}
@@ -345,40 +375,37 @@ export function RecipeSuggestionScreen({ isActive, nickname }: Props) {
   );
 }
 
-function OptionRow<T extends number>({
+function NumberInputRow({
+  errorMessage,
   label,
-  onSelect,
-  options,
-  selected,
+  maxLength,
+  onChange,
   suffix,
+  value,
 }: {
+  errorMessage?: string;
   label: string;
-  onSelect(value: T): void;
-  options: readonly T[];
-  selected: number;
+  maxLength: number;
+  onChange(value: string): void;
   suffix: string;
+  value: string;
 }) {
   return (
     <View style={styles.optionBlock}>
       <Text style={styles.optionLabel}>{label}</Text>
-      <View style={styles.optionChips}>
-        {options.map((option) => (
-          <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selected === option }}
-            key={option}
-            onPress={() => onSelect(option)}
-            style={[
-              styles.optionChip,
-              selected === option && styles.optionChipSelected,
-            ]}
-          >
-            <Text style={selected === option ? styles.optionChipTextSelected : styles.optionChipText}>
-              {option}{suffix}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.numberInputRow}>
+        <TextInput
+          accessibilityLabel={`${label} 입력`}
+          keyboardType="number-pad"
+          maxLength={maxLength}
+          onChangeText={(text) => onChange(text.replace(/\D/g, ''))}
+          selectTextOnFocus
+          style={[styles.numberInput, errorMessage && styles.numberInputError]}
+          value={value}
+        />
+        <Text style={styles.numberInputSuffix}>{suffix}</Text>
       </View>
+      {errorMessage && <Text style={styles.numberInputErrorText}>{errorMessage}</Text>}
     </View>
   );
 }
@@ -503,7 +530,11 @@ const styles = StyleSheet.create({
   description: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm },
   selectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md, marginTop: spacing.xxxl },
   sectionTitle: { color: colors.text.primary, ...typography.heading2 },
+  selectionActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   selectionCount: { color: colors.brand.action, ...typography.label },
+  clearSelectionButton: { backgroundColor: colors.brand.soft, borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  clearSelectionButtonText: { color: colors.brand.action, ...typography.caption, fontWeight: '700' },
+  selectionGuide: { color: colors.brand.action, ...typography.caption, marginBottom: spacing.md },
   retry: { color: colors.brand.action, ...typography.label, paddingVertical: spacing.sm },
   itemsLoader: { minHeight: 120 },
   emptyIngredients: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.large, borderWidth: 1, padding: spacing.xxl },
@@ -514,7 +545,7 @@ const styles = StyleSheet.create({
   ingredientCardSelected: { backgroundColor: colors.brand.soft, borderColor: colors.brand.primary, borderWidth: 2, padding: 11 },
   checkbox: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1.5, height: 24, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 24 },
   checkboxSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
-  checkmark: { color: colors.text.inverse, fontSize: 13, fontWeight: '900' },
+  checkmarkIcon: { height: 15, tintColor: colors.text.inverse, width: 15 },
   ingredientName: { color: colors.text.primary, fontSize: 15, fontWeight: '800', lineHeight: 20, paddingRight: spacing.xxl },
   ingredientMeta: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.sm },
   date: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
@@ -524,11 +555,11 @@ const styles = StyleSheet.create({
   optionBlock: { gap: spacing.sm },
   optionLabel: { color: colors.text.primary, ...typography.label },
   optionDescription: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
-  optionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  optionChip: { alignItems: 'center', backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radii.full, borderWidth: 1, minHeight: interaction.minimumTouchSize, minWidth: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  optionChipSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
-  optionChipText: { color: colors.text.secondary, ...typography.label },
-  optionChipTextSelected: { color: colors.text.inverse, ...typography.label },
+  numberInputRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  numberInput: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong, borderRadius: radii.medium, borderWidth: 1, color: colors.text.primary, fontSize: 18, fontWeight: '800', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, textAlign: 'center', width: 88 },
+  numberInputError: { borderColor: colors.danger },
+  numberInputSuffix: { color: colors.text.secondary, ...typography.bodyStrong },
+  numberInputErrorText: { color: colors.danger, ...typography.caption },
   seasoningRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: interaction.minimumTouchSize },
   seasoningCopy: { flex: 1, paddingRight: spacing.md },
   toggle: { backgroundColor: colors.borderStrong, borderRadius: radii.full, height: 30, justifyContent: 'center', padding: 3, width: 52 },

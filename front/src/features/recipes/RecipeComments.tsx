@@ -141,9 +141,9 @@ export function RecipeComments({ initialCount, onCountChange, recipePostId }: {
               ) : (
                 <Text style={styles.content}>{comment.content}</Text>
               )}
-              {comment.isOwn && editingId !== comment.id && (
+              {comment.canDelete && editingId !== comment.id && (
                 <View style={styles.ownerActions}>
-                  <Pressable onPress={() => { setEditingId(comment.id); setEditingContent(comment.content); }}><Text style={styles.editAction}>수정</Text></Pressable>
+                  {comment.isOwn && <Pressable onPress={() => { setEditingId(comment.id); setEditingContent(comment.content); }}><Text style={styles.editAction}>수정</Text></Pressable>}
                   <Pressable disabled={Boolean(workingId)} onPress={() => confirmDelete(comment)}><Text style={styles.deleteAction}>삭제</Text></Pressable>
                 </View>
               )}

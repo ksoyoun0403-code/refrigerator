@@ -12,9 +12,10 @@ const bookmarkIcon = require('../../../assets/icons/bookmark.png');
 const backIcon = require('../../../assets/icons/back.png');
 const cookbookIcon = require('../../../assets/icons/cookbook.png');
 
-export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onOpenCookbook, view }: {
+export function CommunityScreen({ backSignal, isActive, onCloseCookbook, onDetailStateChange, onOpenCookbook, view }: {
   backSignal: number;
   isActive: boolean;
+  onCloseCookbook(): void;
   onDetailStateChange(isOpen: boolean): void;
   onOpenCookbook(): void;
   view: 'feed' | 'cookbook';
@@ -22,6 +23,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
   const requestId = useRef(0);
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
+  const [sort, setSort] = useState<'popular' | 'latest'>('popular');
   const [posts, setPosts] = useState<RecipePostListItem[]>([]);
   const [selectedPost, setSelectedPost] = useState<RecipePost>();
   const [isLoading, setIsLoading] = useState(false);
@@ -44,7 +46,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
     setIsLoading(true);
     setErrorMessage(undefined);
     try {
-      const loaded = await getRecipePosts(search);
+      const loaded = await getRecipePosts(search, sort);
       if (currentRequest === requestId.current) setPosts(loaded);
     } catch (error) {
       if (currentRequest !== requestId.current) return;
@@ -53,7 +55,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
     } finally {
       if (currentRequest === requestId.current) setIsLoading(false);
     }
-  }, [appliedQuery]);
+  }, [appliedQuery, sort]);
 
   useEffect(() => {
     if (isActive) void loadPosts();
@@ -151,7 +153,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
   }
 
   if (view === 'cookbook') {
-    return <CookbookScreen inventoryNames={inventoryNames} isActive={isActive} onOpenPost={(id) => void openPost(id)} />;
+    return <CookbookScreen inventoryNames={inventoryNames} isActive={isActive} onClose={onCloseCookbook} onOpenPost={(id) => void openPost(id)} />;
   }
 
   return (
@@ -172,6 +174,15 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
       <View style={styles.searchRow}>
         <TextInput accessibilityLabel="레시피 검색" maxLength={100} onChangeText={setQuery} onSubmitEditing={search} placeholder="레시피 이름이나 재료를 검색해보세요" placeholderTextColor={colors.text.muted} returnKeyType="search" style={styles.searchInput} value={query} />
         <Button label="검색" onPress={search} style={styles.searchButton} />
+      </View>
+      <View style={styles.feedSortRow}>
+        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSort('popular')}>
+          <Text style={[styles.feedSortText, sort === 'popular' && styles.feedSortTextSelected]}>인기순</Text>
+        </Pressable>
+        <Text style={styles.feedSortDivider}>|</Text>
+        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSort('latest')}>
+          <Text style={[styles.feedSortText, sort === 'latest' && styles.feedSortTextSelected]}>최신순</Text>
+        </Pressable>
       </View>
       {appliedQuery && (
         <View style={styles.resultHeader}>
@@ -218,7 +229,7 @@ export function CommunityScreen({ backSignal, isActive, onDetailStateChange, onO
   );
 }
 
-function CookbookScreen({ inventoryNames, isActive, onOpenPost }: { inventoryNames?: Set<string>; isActive: boolean; onOpenPost(id: string): void }) {
+function CookbookScreen({ inventoryNames, isActive, onClose, onOpenPost }: { inventoryNames?: Set<string>; isActive: boolean; onClose(): void; onOpenPost(id: string): void }) {
   const [section, setSection] = useState<'mine' | 'bookmarked'>('mine');
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
@@ -299,7 +310,12 @@ function CookbookScreen({ inventoryNames, isActive, onOpenPost }: { inventoryNam
   };
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>나의 요리책</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>나의 요리책</Text>
+        <Pressable accessibilityLabel="나의 요리책 닫기" accessibilityRole="button" onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+          <Text style={styles.closeButtonText}>닫기</Text>
+        </Pressable>
+      </View>
       <View style={styles.searchRow}>
         <TextInput
           accessibilityLabel="나의 요리책 검색"
@@ -396,12 +412,18 @@ const styles = StyleSheet.create({
   titleCopy: { flex: 1 },
   title: { color: colors.text.primary, ...typography.heading1, marginTop: spacing.xs },
   cookbookButton: { minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  closeButton: { alignItems: 'center', justifyContent: 'center', minHeight: interaction.minimumTouchSize, paddingHorizontal: spacing.md },
+  closeButtonText: { color: colors.brand.action, ...typography.label, fontWeight: '800' },
   segmentRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
   segmentButton: { flex: 1, paddingHorizontal: spacing.sm },
   manageButton: { marginTop: spacing.md },
   searchRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
   searchInput: { backgroundColor: colors.surface, borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1, color: colors.text.primary, flex: 1, minHeight: 48, paddingHorizontal: spacing.lg, ...typography.body },
   searchButton: { minWidth: 72, paddingHorizontal: spacing.md },
+  feedSortRow: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md, paddingVertical: spacing.xs },
+  feedSortText: { color: colors.text.muted, ...typography.caption },
+  feedSortTextSelected: { color: colors.brand.action, fontWeight: '800' },
+  feedSortDivider: { color: colors.borderStrong, ...typography.caption },
   resultHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.md },
   resultText: { color: colors.text.secondary, ...typography.caption, flex: 1 },
   list: { gap: spacing.md, marginTop: spacing.xl },

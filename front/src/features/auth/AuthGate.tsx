@@ -33,12 +33,14 @@ export function AuthGate() {
         const user = await getMe(stored.accessToken);
         const restored = { ...stored, user };
         await saveStoredSession(restored);
+        configureAuthenticatedFetch(restored);
         setSession(restored);
       } catch (error) {
         if (!(error instanceof AuthApiError) || error.status !== 401) throw error;
         try {
           const refreshed = await refresh(stored.refreshToken);
           await saveStoredSession(refreshed);
+          configureAuthenticatedFetch(refreshed);
           setSession(refreshed);
         } catch (refreshError) {
           if (refreshError instanceof AuthApiError && refreshError.status === 401) {

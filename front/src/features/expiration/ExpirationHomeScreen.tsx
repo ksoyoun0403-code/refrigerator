@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,13 +30,17 @@ import {
   ExpirationReminderDay,
   ExpirationNotificationStatus,
   getExpirationReminderDate,
+  hasShownExpirationNotificationPermissionOnboarding,
   loadExpirationNotificationSettings,
+  markExpirationNotificationPermissionOnboardingShown,
+  requestExpirationNotificationAccess,
   saveExpirationNotificationSettings,
   syncExpirationNotifications,
 } from './expirationNotifications';
 import { ExpirationItem } from './types';
 
 const notificationSettingsIcon = require('../../../assets/icons/notification-settings.png');
+const checkIcon = require('../../../assets/icons/check.png');
 
 type ManageMode = 'idle' | 'editing' | 'deleting';
 
@@ -60,7 +64,6 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
   requestedItemId?: string;
   userId: string;
 }) {
-  const scrollViewRef = useRef<ScrollView>(null);
   const [items, setItems] = useState<ExpirationItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<ExpirationItem>();
   const [isLoading, setIsLoading] = useState(true);
@@ -92,9 +95,31 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
     }
   }, [userId]);
 
+  const requestNotificationAccess = useCallback(async () => {
+    const status = await requestExpirationNotificationAccess();
+    setNotificationStatus(status);
+    if (status === 'enabled') await loadItems();
+  }, [loadItems]);
+
   useEffect(() => {
     if (isActive) void loadItems();
   }, [isActive, loadItems]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    void hasShownExpirationNotificationPermissionOnboarding().then(async (shown) => {
+      if (shown) return;
+      await markExpirationNotificationPermissionOnboardingShown();
+      Alert.alert(
+        '유통기한 알림을 받아보세요',
+        'MYDISH가 설정한 날짜와 시간에 냉장고 재료의 유통기한을 알려드려요. 권한은 나중에 알림 설정에서도 변경할 수 있습니다.',
+        [
+          { text: '나중에', style: 'cancel' },
+          { text: '권한 설정', onPress: () => void requestNotificationAccess() },
+        ],
+      );
+    }).catch(() => undefined);
+  }, [isActive, requestNotificationAccess]);
 
   useEffect(() => {
     void loadExpirationNotificationSettings(userId).then(setNotificationSettings);
@@ -166,12 +191,6 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
     });
   };
 
-  useEffect(() => {
-    if (!previousPlacement) return;
-    const timer = setTimeout(() => setPreviousPlacement(undefined), 5000);
-    return () => clearTimeout(timer);
-  }, [previousPlacement]);
-
   const itemRegistered = async (item: ExpirationItem) => {
     setIsManualFormOpen(false);
     setItems((current) => sortItemsForDisplay([...current, item]));
@@ -211,6 +230,48 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
     );
   };
 
+  const deleteSelectedItems = async () => {
+    if (deletingId || selectedIds.size === 0) return;
+    const selectedItems = items.filter(({ id }) => selectedIds.has(id));
+    setDeletingId('selection');
+    const deletedIds = new Set<string>();
+    const failedIds = new Set<string>();
+    for (const item of selectedItems) {
+      try {
+        await deleteExpirationItem(item.id);
+        deletedIds.add(item.id);
+      } catch {
+        failedIds.add(item.id);
+      }
+    }
+    const remainingItems = items.filter(({ id }) => !deletedIds.has(id));
+    setItems(remainingItems);
+    setSelectedIds(failedIds);
+    setDeletingId(undefined);
+    void syncExpirationNotifications(userId, remainingItems).then(setNotificationStatus);
+
+    if (failedIds.size === 0) {
+      setManageMode('idle');
+    } else {
+      Alert.alert(
+        '일부 재료를 삭제하지 못했어요',
+        `${deletedIds.size}개는 삭제했고 ${failedIds.size}개는 삭제하지 못했습니다. 다시 시도해주세요.`,
+      );
+    }
+  };
+
+  const confirmDeleteSelection = () => {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      '선택한 재료를 삭제할까요?',
+      `${selectedIds.size}개 재료를 삭제하면 연결된 스캔 기록도 함께 사라집니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => void deleteSelectedItems() },
+      ],
+    );
+  };
+
   const enterManageMode = (mode: Exclude<ManageMode, 'idle'>) => {
     setManageMode(mode);
     setSelectedIds(new Set());
@@ -225,8 +286,8 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
   };
 
   const toggleSelection = (item: ExpirationItem) => {
-    if (isMovingSelection) return;
-    if (!selectedIds.has(item.id)) {
+    if (isMovingSelection || deletingId) return;
+    if (manageMode === 'editing' && !selectedIds.has(item.id)) {
       const firstSelectedItem = items.find(({ id }) => selectedIds.has(id));
       if (firstSelectedItem && firstSelectedItem.section !== item.section) {
         Alert.alert(
@@ -246,7 +307,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
   };
 
   const clearSelection = () => {
-    if (isMovingSelection) return;
+    if (isMovingSelection || deletingId) return;
     setSelectedIds(new Set());
     setPreviousPlacement(undefined);
   };
@@ -331,28 +392,15 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
     Alert.alert('수정 완료', `${updatedItem.name} 정보를 수정했습니다.`);
   };
 
-  const keepFocusedFieldAboveKeyboard = (
-    field: 'name' | 'quantity' | 'expirationDate' | 'purchasedAt',
-  ) => {
-    const editOffsets = { name: 0, quantity: 140, expirationDate: 320, purchasedAt: 470 };
-    const registrationOffsets = { name: 800, quantity: 950, expirationDate: 1130, purchasedAt: 1280 };
-    const targetOffset = selectedItem ? editOffsets[field] : registrationOffsets[field];
-
-    setTimeout(() => {
-      scrollViewRef.current?.scrollTo({ animated: true, y: targetOffset });
-    }, 250);
-  };
-
   if (selectedItem) {
     return (
       <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoidingView}>
-          <ScrollView ref={scrollViewRef} contentContainerStyle={styles.editContainer} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={styles.editContainer} keyboardShouldPersistTaps="handled">
             <Text style={styles.editPageTitle}>식재료 정보</Text>
             <ExpirationRegistrationForm
               item={selectedItem}
               onCancel={() => setSelectedItem(undefined)}
-              onFieldFocus={keepFocusedFieldAboveKeyboard}
               onUpdated={itemUpdated}
             />
           </ScrollView>
@@ -370,10 +418,9 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
     <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoidingView}>
       <ScrollView
-        ref={scrollViewRef}
         contentContainerStyle={[
           styles.container,
-          manageMode === 'editing' && styles.containerWithSelectionBar,
+          manageMode !== 'idle' && styles.containerWithSelectionBar,
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -385,6 +432,9 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
             <Text style={styles.notificationNoticeText}>
               휴대폰 설정에서 MYDISH 알림을 허용하면 선택한 시점과 시간에 알려드려요.
             </Text>
+            <Pressable onPress={() => void requestNotificationAccess()}>
+              <Text style={styles.notificationRetry}>알림 권한 설정</Text>
+            </Pressable>
           </View>
         )}
         {notificationStatus === 'error' && (
@@ -418,7 +468,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
                 <Text style={styles.notificationSettingsCloseText}>×</Text>
               </Pressable>
             </View>
-            <SettingChoices
+          <SettingChoices
               label="알림"
               options={[{ label: '사용', value: true }, { label: '끄기', value: false }]}
               selected={notificationSettingsDraft.enabled}
@@ -442,6 +492,13 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
                 <Text style={styles.notificationTimeAction}>시간 변경</Text>
               </Pressable>
             </View>
+            {Platform.OS === 'android' && (
+              <Button
+                label="Android 알림 권한 확인"
+                onPress={() => void requestNotificationAccess()}
+                variant="secondary"
+              />
+            )}
             <Button label="저장" loading={isSavingNotificationSettings} onPress={() => void confirmNotificationSettings()} style={styles.notificationSettingsSaveButton} />
           </View>
         )}
@@ -451,7 +508,6 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
           <ExpirationRegistrationForm
             manual
             onCancel={() => setIsManualFormOpen(false)}
-            onFieldFocus={keepFocusedFieldAboveKeyboard}
             onRegistered={itemRegistered}
           />
         ) : (
@@ -470,7 +526,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
               {items.length > 0 && (
                 <>
                   <Pressable onPress={() => enterManageMode('editing')} style={styles.manageButton}>
-                    <Text style={styles.manageButtonText}>편집</Text>
+                    <Text style={styles.manageButtonText}>재료 이동</Text>
                   </Pressable>
                   <Pressable onPress={() => enterManageMode('deleting')} style={styles.deleteModeButton}>
                     <Text style={styles.deleteModeButtonText}>삭제</Text>
@@ -478,11 +534,11 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
                 </>
               )}
             </View>
-          ) : (
+          ) : manageMode === 'deleting' ? (
             <Pressable disabled={isMovingSelection || Boolean(deletingId)} onPress={exitManageMode}>
               <Text style={styles.doneAction}>완료</Text>
             </Pressable>
-          )}
+          ) : null}
         </View>
 
         {manageMode === 'editing' && (
@@ -492,7 +548,7 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
         )}
         {manageMode === 'deleting' && (
           <Text style={styles.modeDescription}>
-            카드 오른쪽 위의 ×를 누르면 재료를 삭제할 수 있어요.
+            삭제할 재료를 여러 개 선택한 뒤 아래 삭제 버튼을 눌러주세요.
           </Text>
         )}
 
@@ -544,16 +600,23 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
 
       {manageMode === 'editing' && (
         <View style={styles.selectionBar}>
-          {previousPlacement && previousPlacement.length > 0 ? (
-            <View style={styles.undoRow}>
-              <Text style={styles.undoMessage}>{previousPlacement.length}개 재료를 이동했어요.</Text>
-              <Pressable disabled={isMovingSelection} onPress={() => void undoMove()}>
-                <Text style={styles.undoAction}>되돌리기</Text>
+          <View style={styles.undoRow}>
+            <Text style={previousPlacement && previousPlacement.length > 0 ? styles.undoMessage : styles.selectionCount}>
+              {previousPlacement && previousPlacement.length > 0
+                ? `${previousPlacement.length}개 재료를 이동했어요.`
+                : `선택 ${selectedIds.size}개`}
+            </Text>
+            <View style={styles.editingFinishActions}>
+              {previousPlacement && previousPlacement.length > 0 && (
+                <Pressable disabled={isMovingSelection} onPress={() => void undoMove()}>
+                  <Text style={[styles.editingAction, styles.undoAction]}>되돌리기</Text>
+                </Pressable>
+              )}
+              <Pressable disabled={isMovingSelection} onPress={exitManageMode}>
+                <Text style={[styles.editingAction, styles.finishEditingAction]}>완료</Text>
               </Pressable>
             </View>
-          ) : (
-            <Text style={styles.selectionCount}>선택 {selectedIds.size}개</Text>
-          )}
+          </View>
           {selectedSection && (
             <View style={styles.placementActions}>
               <Button
@@ -574,6 +637,28 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
               />
             </View>
           )}
+        </View>
+      )}
+      {manageMode === 'deleting' && (
+        <View style={styles.selectionBar}>
+          <Text style={styles.deleteSelectionCount}>선택 {selectedIds.size}개</Text>
+          <View style={styles.placementActions}>
+            <Button
+              disabled={Boolean(deletingId) || selectedIds.size === 0}
+              label="선택 취소"
+              onPress={clearSelection}
+              style={styles.cancelSelectionButton}
+              variant="secondary"
+            />
+            <Button
+              disabled={selectedIds.size === 0}
+              label={`${selectedIds.size}개 삭제`}
+              loading={Boolean(deletingId)}
+              onPress={confirmDeleteSelection}
+              style={styles.placementButton}
+              variant="danger"
+            />
+          </View>
         </View>
       )}
       <RegistrationCompleteSheet
@@ -783,20 +868,20 @@ function ItemCard({
   onSelect(): void;
   selected: boolean;
 }) {
-  const onPress = manageMode === 'editing' ? onSelect : manageMode === 'idle' ? onEdit : undefined;
+  const onPress = manageMode === 'idle' ? onEdit : onSelect;
   const expired = isExpirationDatePast(item.expirationDate);
 
   return (
     <Pressable
       accessibilityHint={
-        manageMode === 'editing'
-          ? '이동할 식재료로 선택합니다'
+        manageMode !== 'idle'
+          ? manageMode === 'editing' ? '이동할 식재료로 선택합니다' : '삭제할 식재료로 선택합니다'
           : manageMode === 'idle'
             ? '식재료 정보를 수정합니다'
             : undefined
       }
       accessibilityRole="button"
-      accessibilityState={{ selected: manageMode === 'editing' ? selected : undefined }}
+      accessibilityState={{ selected: manageMode !== 'idle' ? selected : undefined }}
       disabled={deleting}
       onPress={onPress}
       style={({ pressed }) => [
@@ -806,26 +891,10 @@ function ItemCard({
         pressed && styles.itemCardPressed,
       ]}
     >
-      {manageMode === 'editing' && (
+      {manageMode !== 'idle' && (
         <View style={[styles.selectionIndicator, selected && styles.selectionIndicatorSelected]}>
-          {selected && <Text style={styles.selectionCheck}>✓</Text>}
+          {selected && <Image resizeMode="contain" source={checkIcon} style={styles.selectionCheck} />}
         </View>
-      )}
-      {manageMode === 'deleting' && (
-        <Pressable
-          accessibilityLabel={`${item.name} 삭제`}
-          accessibilityRole="button"
-          disabled={deleting}
-          hitSlop={8}
-          onPress={onDelete}
-          style={styles.cardDeleteButton}
-        >
-          {deleting ? (
-            <ActivityIndicator color={colors.danger} size="small" />
-          ) : (
-            <Text style={styles.cardDeleteText}>×</Text>
-          )}
-        </Pressable>
       )}
       {expired && manageMode === 'idle' && (
         <Pressable accessibilityLabel={`${item.name} 버리기`} onPress={onDelete} style={styles.discardBadge}>
@@ -946,15 +1015,17 @@ const styles = StyleSheet.create({
   missingDate: { color: colors.text.muted, fontWeight: '600' },
   selectionIndicator: { alignItems: 'center', borderColor: colors.borderStrong, borderRadius: radii.full, borderWidth: 1.5, height: 24, justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm, width: 24 },
   selectionIndicatorSelected: { backgroundColor: colors.brand.action, borderColor: colors.brand.action },
-  selectionCheck: { color: colors.text.inverse, fontSize: 13, fontWeight: '900', lineHeight: 17 },
-  cardDeleteButton: { alignItems: 'center', backgroundColor: colors.dangerSoft, borderRadius: radii.full, height: interaction.minimumTouchSize, justifyContent: 'center', position: 'absolute', right: spacing.xs, top: spacing.xs, width: interaction.minimumTouchSize, zIndex: 1 },
-  cardDeleteText: { color: colors.danger, fontSize: 24, fontWeight: '600', lineHeight: 26 },
+  selectionCheck: { height: 15, tintColor: colors.text.inverse, width: 15 },
   selectionBar: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, bottom: 0, left: 0, paddingHorizontal: spacing.xxl, paddingVertical: spacing.md, position: 'absolute', right: 0 },
-  selectionCount: { color: colors.text.secondary, ...typography.caption, fontWeight: '700', marginBottom: spacing.sm },
+  selectionCount: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
   placementActions: { flexDirection: 'row', gap: spacing.sm },
   cancelSelectionButton: { borderRadius: radii.medium, flex: 1 },
   placementButton: { borderRadius: radii.medium, flex: 1 },
   undoRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
-  undoMessage: { color: colors.text.secondary, ...typography.caption, fontWeight: '700' },
-  undoAction: { color: colors.brand.action, ...typography.caption, fontWeight: '900', minHeight: interaction.minimumTouchSize, paddingVertical: spacing.md },
+  editingFinishActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.lg },
+  undoMessage: { color: colors.text.secondary, flex: 1, ...typography.bodyStrong },
+  editingAction: { ...typography.bodyStrong, fontWeight: '800', minHeight: interaction.minimumTouchSize, paddingVertical: spacing.md },
+  undoAction: { color: colors.text.muted },
+  finishEditingAction: { color: colors.brand.action },
+  deleteSelectionCount: { color: colors.text.secondary, ...typography.bodyStrong, marginBottom: spacing.sm },
 });

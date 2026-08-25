@@ -17,6 +17,6 @@ export class RecipeCommentsController {
   @Delete(':id')
   @HttpCode(204)
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.commentsService.remove(user.id, id);
+    return this.commentsService.remove(user.id, user.loginId, id);
   }
 }
