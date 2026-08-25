@@ -21,7 +21,7 @@ type RecipePostRecord = {
   recipe: unknown;
   createdAt: Date;
   updatedAt: Date;
-  author: { id: string; nickname: string };
+  author: { id: string; nickname: string } | null;
   _count: { bookmarks: number; comments: number };
   bookmarks?: { userId: string }[];
 };
@@ -224,7 +224,7 @@ function mapRecipePost(
 ): RecipePost {
   return {
     id: record.id,
-    author: record.author,
+    author: record.author ?? { id: null, nickname: '익명' },
     title: record.title,
     summary: record.summary,
     ingredientNames: record.ingredientNames,
@@ -232,7 +232,7 @@ function mapRecipePost(
     bookmarkCount: record._count.bookmarks,
     commentCount: record._count.comments,
     isBookmarked,
-    isOwn: record.author.id === currentUserId,
+    isOwn: record.author?.id === currentUserId,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };

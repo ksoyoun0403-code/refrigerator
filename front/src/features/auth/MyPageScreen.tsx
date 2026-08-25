@@ -6,8 +6,9 @@ import { AuthUser } from './types';
 
 const editIcon = require('../../../assets/icons/edit.png');
 
-export function MyPageScreen({ onChangePassword, onLogout, onUpdateNickname, user }: {
+export function MyPageScreen({ onChangePassword, onDeleteAccount, onLogout, onUpdateNickname, user }: {
   onChangePassword(): void;
+  onDeleteAccount(): Promise<void>;
   onLogout(): Promise<void>;
   onUpdateNickname(nickname: string): Promise<void>;
   user: AuthUser;
@@ -15,6 +16,7 @@ export function MyPageScreen({ onChangePassword, onLogout, onUpdateNickname, use
   const [isEditing, setIsEditing] = useState(false);
   const [nickname, setNickname] = useState(user.nickname);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
 
   useEffect(() => { if (!isEditing) setNickname(user.nickname); }, [isEditing, user.nickname]);
@@ -37,6 +39,28 @@ export function MyPageScreen({ onChangePassword, onLogout, onUpdateNickname, use
     { text: '취소', style: 'cancel' },
     { text: '로그아웃', style: 'destructive', onPress: () => void onLogout() },
   ]);
+
+  const confirmDeleteAccount = () => Alert.alert(
+    '정말로 탈퇴하시겠습니까?',
+    '냉장고와 계정 정보는 삭제되며, 공유한 레시피는 익명으로 남습니다.',
+    [
+      { text: '아니오', style: 'cancel' },
+      {
+        text: '네',
+        style: 'destructive',
+        onPress: async () => {
+          if (isDeletingAccount) return;
+          setIsDeletingAccount(true);
+          try {
+            await onDeleteAccount();
+          } catch (error) {
+            setIsDeletingAccount(false);
+            Alert.alert('회원 탈퇴를 완료하지 못했어요', error instanceof Error ? error.message : '다시 시도해주세요.');
+          }
+        },
+      },
+    ],
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -78,6 +102,14 @@ export function MyPageScreen({ onChangePassword, onLogout, onUpdateNickname, use
         <Pressable accessibilityRole="button" onPress={confirmLogout} style={styles.optionRow}>
           <Text style={styles.logout}>로그아웃</Text><Text style={styles.chevron}>›</Text>
         </Pressable>
+        <View style={styles.optionDivider} />
+        <Pressable accessibilityRole="button" disabled={isDeletingAccount} onPress={confirmDeleteAccount} style={styles.optionRow}>
+          <View>
+            <Text style={styles.deleteAccount}>회원 탈퇴</Text>
+            <Text style={styles.optionDescription}>계정과 냉장고 정보를 영구 삭제합니다.</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
@@ -107,5 +139,6 @@ const styles = StyleSheet.create({
   optionDescription: { color: colors.text.muted, ...typography.caption, marginTop: spacing.xs },
   optionDivider: { backgroundColor: colors.border, height: 1, marginHorizontal: spacing.xl },
   logout: { color: colors.danger, ...typography.bodyStrong },
+  deleteAccount: { color: colors.danger, ...typography.bodyStrong },
   chevron: { color: colors.text.muted, fontSize: 28 },
 });

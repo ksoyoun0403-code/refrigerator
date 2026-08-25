@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../design-system/Button';
 import { colors, spacing, typography } from '../../design-system/tokens';
 import { MainTabNavigator } from '../../navigation/MainTabNavigator';
-import { AuthApiError, changePassword, getMe, logout, refresh, updateNickname } from './authApi';
+import { AuthApiError, changePassword, deleteAccount, getMe, logout, refresh, updateNickname } from './authApi';
 import { AuthScreen } from './AuthScreen';
 import { clearStoredSession, loadStoredSession, saveStoredSession } from './authStorage';
 import { AuthSession } from './types';
@@ -114,6 +114,16 @@ export function AuthGate() {
     setSession(nextSession);
   };
 
+  const deleteCurrentAccount = async () => {
+    if (!session) throw new Error('다시 로그인해주세요.');
+    const current = session;
+    await deleteAccount(current.accessToken);
+    await clearExpirationNotifications(current.user.id).catch(() => undefined);
+    await clearStoredSession();
+    configureAuthenticatedFetch(undefined);
+    setSession(undefined);
+  };
+
   if (restoreState === 'loading') {
     return (
       <SafeAreaView style={styles.centered}>
@@ -134,7 +144,7 @@ export function AuthGate() {
   }
 
   return session ? (
-    <MainTabNavigator onChangePassword={changeCurrentPassword} onLogout={signOut} onUpdateNickname={updateCurrentNickname} user={session.user} />
+    <MainTabNavigator onChangePassword={changeCurrentPassword} onDeleteAccount={deleteCurrentAccount} onLogout={signOut} onUpdateNickname={updateCurrentNickname} user={session.user} />
   ) : (
     <AuthScreen onAuthenticated={authenticated} />
   );

@@ -3,7 +3,7 @@ import { RecipeSuggestion } from '../recipe-suggestions/recipe-suggestion';
 export type RecipePost = {
   id: string;
   author: {
-    id: string;
+    id: string | null;
     nickname: string;
   };
   title: string;
