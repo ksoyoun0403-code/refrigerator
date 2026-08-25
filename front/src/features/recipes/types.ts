@@ -42,7 +42,7 @@ export type GenerateRecipeSuggestions = {
 
 export type RecipePostListItem = {
   id: string;
-  author: { id: string; nickname: string };
+  author: { id: string | null; nickname: string };
   title: string;
   ingredientNames: string[];
   bookmarkCount: number;

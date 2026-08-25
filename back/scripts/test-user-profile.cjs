@@ -6,6 +6,7 @@ const port = 3104;
 const baseUrl = `http://127.0.0.1:${port}/v1`;
 const database = new Client({ connectionString: process.env.DATABASE_URL });
 const userIds = [];
+const postIds = [];
 let server;
 
 async function waitForServer() {
@@ -56,11 +57,47 @@ async function main() {
     method: 'PATCH', headers, body: JSON.stringify({ nickname: '닉' }),
   });
   assert.equal(invalidResponse.status, 400);
-  console.log('User nickname update API test passed.');
+
+  const recipe = {
+    title: `탈퇴 보존 레시피 ${suffix}`,
+    summary: '탈퇴 후 익명으로 남아야 하는 테스트 레시피',
+    servings: 2,
+    cookingMinutes: 20,
+    usedIngredients: [{ name: '두부', amount: '1모' }],
+    basicSeasonings: ['소금'],
+    missingIngredients: [],
+    preparationSteps: [{ ingredientName: '두부', instruction: '물기를 제거한다.' }],
+    cookingSteps: ['팬에서 충분히 익힌다.'],
+    safetyNotes: ['재료 상태를 확인한다.'],
+  };
+  const postResponse = await fetch(`${baseUrl}/recipe-posts`, {
+    method: 'POST', headers, body: JSON.stringify(recipe),
+  });
+  const postBody = await postResponse.text();
+  assert.equal(postResponse.status, 201, postBody);
+  const post = JSON.parse(postBody);
+  postIds.push(post.id);
+
+  const deleteResponse = await fetch(`${baseUrl}/users/me`, {
+    method: 'DELETE', headers,
+  });
+  assert.equal(deleteResponse.status, 204, await deleteResponse.text());
+  assert.equal((await database.query('SELECT COUNT(*)::int AS count FROM users WHERE id = $1', [first.user.id])).rows[0].count, 0);
+  assert.equal((await database.query('SELECT "authorId" FROM recipe_posts WHERE id = $1', [post.id])).rows[0].authorId, null);
+
+  const readerHeaders = { Authorization: `Bearer ${second.accessToken}` };
+  const preserved = await (await fetch(`${baseUrl}/recipe-posts/${post.id}`, { headers: readerHeaders })).json();
+  assert.equal(preserved.author.id, null);
+  assert.equal(preserved.author.nickname, '익명');
+  assert.equal(preserved.isOwn, false);
+  assert.equal((await fetch(`${baseUrl}/auth/me`, { headers })).status, 401);
+
+  console.log('User profile and account deletion API test passed.');
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (server && server.exitCode === null) server.kill();
+  for (const id of postIds) await database.query('DELETE FROM recipe_posts WHERE id = $1', [id]);
   for (const id of userIds) await database.query('DELETE FROM users WHERE id = $1', [id]);
   await database.end();
 });

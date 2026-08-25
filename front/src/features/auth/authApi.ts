@@ -76,6 +76,13 @@ export function updateNickname(accessToken: string, nickname: string) {
   });
 }
 
+export function deleteAccount(accessToken: string) {
+  return request<void>('/users/me', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {

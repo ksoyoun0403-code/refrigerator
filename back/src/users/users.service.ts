@@ -35,4 +35,9 @@ export class UsersService {
       throw error;
     }
   }
+
+  async remove(userId: string) {
+    const removed = await this.prisma.client.user.deleteMany({ where: { id: userId } });
+    if (removed.count === 0) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+  }
 }

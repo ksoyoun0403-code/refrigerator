@@ -16,8 +16,9 @@ const refrigeratorIcon = require('../../assets/icons/refrigerator.png');
 const recipeGenerateIcon = require('../../assets/icons/recipe-generate.png');
 const sharedRecipesIcon = require('../../assets/icons/shared-recipes.png');
 
-export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname, user }: {
+export function MainTabNavigator({ onChangePassword, onDeleteAccount, onLogout, onUpdateNickname, user }: {
   onChangePassword(currentPassword: string, newPassword: string): Promise<void>;
+  onDeleteAccount(): Promise<void>;
   onLogout(): Promise<void>;
   onUpdateNickname(nickname: string): Promise<void>;
   user: AuthUser;
@@ -153,6 +154,7 @@ export function MainTabNavigator({ onChangePassword, onLogout, onUpdateNickname,
       {isMyPageOpen ? (
         <MyPageScreen
           onChangePassword={() => setIsPasswordModalOpen(true)}
+          onDeleteAccount={onDeleteAccount}
           onLogout={onLogout}
           onUpdateNickname={onUpdateNickname}
           user={user}
