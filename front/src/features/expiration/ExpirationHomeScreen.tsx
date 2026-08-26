@@ -420,8 +420,10 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
       <ScrollView
         contentContainerStyle={[
           styles.container,
+          isManualFormOpen && styles.containerWithRegistrationForm,
           manageMode !== 'idle' && styles.containerWithSelectionBar,
         ]}
+        keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>재료 추가</Text>
@@ -939,6 +941,7 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.canvas, flex: 1 },
   keyboardAvoidingView: { flex: 1 },
   container: { padding: spacing.xl, paddingBottom: spacing.giant },
+  containerWithRegistrationForm: { paddingBottom: 280 },
   containerWithSelectionBar: { paddingBottom: 160 },
   editContainer: { padding: spacing.xxl, paddingBottom: spacing.giant },
   title: { color: colors.text.primary, ...typography.heading1, marginTop: spacing.xs },

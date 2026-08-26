@@ -103,8 +103,8 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   };
 
   const registered = async (item: ExpirationItem) => {
-    await onRegistered(item);
     reset();
+    await onRegistered(item);
   };
 
   if (!image) {

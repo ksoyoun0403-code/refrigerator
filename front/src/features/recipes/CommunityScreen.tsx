@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button } from '../../design-system/Button';
 import { colors, interaction, radii, spacing, typography } from '../../design-system/tokens';
 import { RecipeCard } from './RecipeCard';
@@ -21,6 +21,8 @@ export function CommunityScreen({ backSignal, isActive, onCloseCookbook, onDetai
   view: 'feed' | 'cookbook';
 }) {
   const requestId = useRef(0);
+  const detailScrollRef = useRef<ScrollView>(null);
+  const commentSectionY = useRef(0);
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [sort, setSort] = useState<'popular' | 'latest'>('popular');
@@ -122,33 +124,50 @@ export function CommunityScreen({ backSignal, isActive, onCloseCookbook, onDetai
 
   if (selectedPost) {
     return (
-      <ScrollView contentContainerStyle={styles.detailContainer}>
-        <Button
-          iconSource={backIcon}
-          iconStyle={styles.detailBackIcon}
-          iconTintColor={colors.brand.action}
-          label="목록으로 돌아가기"
-          onPress={() => setSelectedPost(undefined)}
-          style={styles.detailBackButton}
-          variant="ghost"
-        />
-        <Text style={styles.author}>@{selectedPost.author.nickname}</Text>
-        <RecipeCard
-          bookmarkState={isBookmarking ? 'loading' : selectedPost.isBookmarked ? 'saved' : 'idle'}
-          onBookmarkPress={selectedPost.isOwn ? undefined : () => void toggleBookmark()}
-          onIngredientsConsumed={() => void loadInventoryNames()}
-          recipe={selectedPost.recipe}
-        />
-        <Text style={styles.bookmarkCount}>북마크 {selectedPost.bookmarkCount}회</Text>
-        <RecipeComments
-          initialCount={selectedPost.commentCount}
-          onCountChange={(commentCount) => {
-            setSelectedPost((current) => current ? { ...current, commentCount } : current);
-            setPosts((current) => current.map((post) => post.id === selectedPost.id ? { ...post, commentCount } : post));
-          }}
-          recipePostId={selectedPost.id}
-        />
-      </ScrollView>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardAvoidingView}>
+        <ScrollView
+          contentContainerStyle={styles.detailContainer}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          ref={detailScrollRef}
+        >
+          <Button
+            iconSource={backIcon}
+            iconStyle={styles.detailBackIcon}
+            iconTintColor={colors.brand.action}
+            label="목록으로 돌아가기"
+            onPress={() => setSelectedPost(undefined)}
+            style={styles.detailBackButton}
+            variant="ghost"
+          />
+          <Text style={styles.author}>@{selectedPost.author.nickname}</Text>
+          <RecipeCard
+            bookmarkState={isBookmarking ? 'loading' : selectedPost.isBookmarked ? 'saved' : 'idle'}
+            onBookmarkPress={selectedPost.isOwn ? undefined : () => void toggleBookmark()}
+            onIngredientsConsumed={() => void loadInventoryNames()}
+            recipe={selectedPost.recipe}
+          />
+          <Text style={styles.bookmarkCount}>북마크 {selectedPost.bookmarkCount}회</Text>
+          <View onLayout={({ nativeEvent }) => { commentSectionY.current = nativeEvent.layout.y; }}>
+            <RecipeComments
+              initialCount={selectedPost.commentCount}
+              onComposerFocus={() => {
+                setTimeout(() => {
+                  detailScrollRef.current?.scrollTo({
+                    animated: true,
+                    y: Math.max(0, commentSectionY.current - spacing.md),
+                  });
+                }, 250);
+              }}
+              onCountChange={(commentCount) => {
+                setSelectedPost((current) => current ? { ...current, commentCount } : current);
+                setPosts((current) => current.map((post) => post.id === selectedPost.id ? { ...post, commentCount } : post));
+              }}
+              recipePostId={selectedPost.id}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -405,7 +424,8 @@ function normalizeIngredientName(value: string) {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.xl, paddingBottom: spacing.giant },
-  detailContainer: { padding: spacing.xl, paddingBottom: spacing.giant },
+  keyboardAvoidingView: { flex: 1 },
+  detailContainer: { padding: spacing.xl, paddingBottom: 280 },
   detailBackButton: { alignSelf: 'flex-start', marginBottom: spacing.md, minWidth: 0, paddingHorizontal: 0 },
   detailBackIcon: { height: 19, width: 19 },
   titleRow: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },

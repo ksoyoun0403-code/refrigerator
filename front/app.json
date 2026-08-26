@@ -7,7 +7,10 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "package": "io.github.ksoyoun0403code.mydish",
@@ -17,7 +20,8 @@
       "adaptiveIcon": {
         "backgroundColor": "#FFF8EE",
         "foregroundImage": "./assets/app-icon-foreground.png"
-      }
+      },
+      "runtimeVersion": "1.0.0"
     },
     "plugins": [
       [
@@ -32,6 +36,15 @@
       "expo-secure-store",
       "expo-notifications",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "861b1fec-0f78-42d5-93af-35c20e526ef3"
+      }
+    },
+    "owner": "soso_04",
+    "updates": {
+      "url": "https://u.expo.dev/861b1fec-0f78-42d5-93af-35c20e526ef3"
+    }
   }
 }

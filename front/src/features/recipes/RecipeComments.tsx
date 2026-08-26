@@ -5,8 +5,9 @@ import { colors, interaction, radii, spacing, typography } from '../../design-sy
 import { createRecipeComment, deleteRecipeComment, getRecipeComments, updateRecipeComment } from './communityApi';
 import { RecipeComment } from './types';
 
-export function RecipeComments({ initialCount, onCountChange, recipePostId }: {
+export function RecipeComments({ initialCount, onComposerFocus, onCountChange, recipePostId }: {
   initialCount: number;
+  onComposerFocus(): void;
   onCountChange(count: number): void;
   recipePostId: string;
 }) {
@@ -109,6 +110,7 @@ export function RecipeComments({ initialCount, onCountChange, recipePostId }: {
           maxLength={500}
           multiline
           onChangeText={setContent}
+          onFocus={onComposerFocus}
           placeholder="레시피에 대한 댓글을 남겨보세요"
           placeholderTextColor={colors.text.muted}
           style={styles.input}
