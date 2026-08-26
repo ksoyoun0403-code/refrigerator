@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../design-system/Button';
 import { colors, radii, spacing, typography } from '../../design-system/tokens';
@@ -76,10 +76,19 @@ export function RecipeConsumptionSheet({ onClose, onConsumed, recipe, visible }:
     return { applied, removed, unresolved };
   }, [manualItemIds, manualRemaining, manualUnits, preview, quantities]);
 
-  const confirm = () => Alert.alert('요리를 완료하고 재료를 반영할까요?', '레시피는 그대로 유지되고 냉장고 수량과 단위만 변경됩니다.', [
-    { text: '취소', style: 'cancel' },
-    { text: '반영하기', onPress: () => void save() },
-  ]);
+  const confirm = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('레시피는 그대로 유지되고 냉장고 수량과 단위만 변경됩니다.\n\n요리를 완료하고 재료를 반영할까요?')) {
+        void save();
+      }
+      return;
+    }
+
+    Alert.alert('요리를 완료하고 재료를 반영할까요?', '레시피는 그대로 유지되고 냉장고 수량과 단위만 변경됩니다.', [
+      { text: '취소', style: 'cancel' },
+      { text: '반영하기', onPress: () => void save() },
+    ]);
+  };
 
   const save = async () => {
     if (!deductions.length || !idempotencyKey || isSaving) return;
@@ -95,8 +104,9 @@ export function RecipeConsumptionSheet({ onClose, onConsumed, recipe, visible }:
     } finally { setIsSaving(false); }
   };
 
-  return <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
-    <SafeAreaView style={styles.safeArea}>
+  return <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
+    <View style={styles.modalBackdrop}>
+    <SafeAreaView style={[styles.safeArea, Platform.OS === 'web' && styles.webSafeArea]}>
       <View style={styles.header}><Text style={styles.title}>재료 반영 확인</Text><Pressable onPress={onClose}><Text style={styles.close}>×</Text></Pressable></View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.recipeTitle}>{recipe.title}</Text>
@@ -166,6 +176,7 @@ export function RecipeConsumptionSheet({ onClose, onConsumed, recipe, visible }:
         <Button disabled={!deductions.length} label="요리 완료 및 재료 반영" loading={isSaving} onPress={confirm} />
       </View>
     </SafeAreaView>
+    </View>
   </Modal>;
 }
 
@@ -176,6 +187,8 @@ function isValidManualRemaining(quantity?: string, currentQuantity?: string, cur
 function roundDisplay(value: number) { return String(Math.round(value * 1000) / 1000); }
 
 const styles = StyleSheet.create({
+  modalBackdrop: { alignItems: 'center', backgroundColor: '#EDE7DF', flex: 1 },
+  webSafeArea: { maxWidth: 430, width: '100%' },
   safeArea: { backgroundColor: colors.canvas, flex: 1 }, header: { alignItems: 'center', borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingVertical: spacing.md },
   title: { color: colors.text.primary, ...typography.title }, close: { color: colors.text.secondary, fontSize: 30, lineHeight: 34, paddingHorizontal: spacing.sm }, content: { padding: spacing.xl, paddingBottom: spacing.giant },
   recipeTitle: { color: colors.text.primary, ...typography.heading2 }, description: { color: colors.text.secondary, ...typography.body, marginTop: spacing.sm }, loader: { marginTop: spacing.xxl }, notice: { backgroundColor: colors.dangerSoft, borderRadius: radii.medium, marginTop: spacing.lg, padding: spacing.md },

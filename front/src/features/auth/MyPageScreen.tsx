@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button } from '../../design-system/Button';
 import { colors, radii, spacing, typography } from '../../design-system/tokens';
 import { AuthUser } from './types';
@@ -35,32 +35,49 @@ export function MyPageScreen({ onChangePassword, onDeleteAccount, onLogout, onUp
     } finally { setIsSaving(false); }
   };
 
-  const confirmLogout = () => Alert.alert('로그아웃할까요?', undefined, [
-    { text: '취소', style: 'cancel' },
-    { text: '로그아웃', style: 'destructive', onPress: () => void onLogout() },
-  ]);
+  const confirmLogout = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('로그아웃할까요?')) void onLogout();
+      return;
+    }
 
-  const confirmDeleteAccount = () => Alert.alert(
-    '정말로 탈퇴하시겠습니까?',
-    '냉장고와 계정 정보는 삭제되며, 공유한 레시피는 익명으로 남습니다.',
-    [
-      { text: '아니오', style: 'cancel' },
-      {
-        text: '네',
-        style: 'destructive',
-        onPress: async () => {
-          if (isDeletingAccount) return;
-          setIsDeletingAccount(true);
-          try {
-            await onDeleteAccount();
-          } catch (error) {
-            setIsDeletingAccount(false);
-            Alert.alert('회원 탈퇴를 완료하지 못했어요', error instanceof Error ? error.message : '다시 시도해주세요.');
-          }
-        },
-      },
-    ],
-  );
+    Alert.alert('로그아웃할까요?', undefined, [
+      { text: '취소', style: 'cancel' },
+      { text: '로그아웃', style: 'destructive', onPress: () => void onLogout() },
+    ]);
+  };
+
+  const deleteCurrentAccount = async () => {
+    if (isDeletingAccount) return;
+    setIsDeletingAccount(true);
+    setErrorMessage(undefined);
+    try {
+      await onDeleteAccount();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '다시 시도해주세요.';
+      setIsDeletingAccount(false);
+      setErrorMessage(message);
+      Alert.alert('회원 탈퇴를 완료하지 못했어요', message);
+    }
+  };
+
+  const confirmDeleteAccount = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('냉장고와 계정 정보는 삭제되며, 공유한 레시피는 익명으로 남습니다.\n\n정말로 탈퇴하시겠습니까?')) {
+        void deleteCurrentAccount();
+      }
+      return;
+    }
+
+    Alert.alert(
+      '정말로 탈퇴하시겠습니까?',
+      '냉장고와 계정 정보는 삭제되며, 공유한 레시피는 익명으로 남습니다.',
+      [
+        { text: '아니오', style: 'cancel' },
+        { text: '네', style: 'destructive', onPress: () => void deleteCurrentAccount() },
+      ],
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">

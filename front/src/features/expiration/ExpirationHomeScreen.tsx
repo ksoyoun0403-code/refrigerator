@@ -220,6 +220,13 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
   };
 
   const confirmDelete = (item: ExpirationItem) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${item.name}을(를) 삭제하면 연결된 스캔 기록도 함께 사라져요.\n\n삭제할까요?`)) {
+        void removeItem(item);
+      }
+      return;
+    }
+
     Alert.alert(
       '재료를 삭제할까요?',
       `${item.name}을(를) 삭제하면 연결된 스캔 기록도 함께 사라져요.`,
@@ -262,6 +269,13 @@ export function ExpirationHomeScreen({ isActive, onRequestedItemHandled, request
 
   const confirmDeleteSelection = () => {
     if (selectedIds.size === 0) return;
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${selectedIds.size}개 재료를 삭제하면 연결된 스캔 기록도 함께 사라집니다.\n\n삭제할까요?`)) {
+        void deleteSelectedItems();
+      }
+      return;
+    }
+
     Alert.alert(
       '선택한 재료를 삭제할까요?',
       `${selectedIds.size}개 재료를 삭제하면 연결된 스캔 기록도 함께 사라집니다.`,
@@ -885,7 +899,8 @@ function ItemCard({
       accessibilityRole="button"
       accessibilityState={{ selected: manageMode !== 'idle' ? selected : undefined }}
       disabled={deleting}
-      onPress={onPress}
+      onPress={Platform.OS === 'web' && manageMode !== 'idle' ? undefined : onPress}
+      onPressIn={Platform.OS === 'web' && manageMode !== 'idle' ? onSelect : undefined}
       style={({ pressed }) => [
         styles.itemCard,
         expired && styles.expiredItemCard,

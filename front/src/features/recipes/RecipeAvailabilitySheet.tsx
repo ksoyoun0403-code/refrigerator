@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../design-system/Button';
 import { colors, radii, spacing, typography } from '../../design-system/tokens';
@@ -26,8 +26,9 @@ export function RecipeAvailabilitySheet({ onClose, recipe, visible }: { onClose(
   }), [preview]);
   const canCook = Boolean(preview?.lines.length && counts.attention === 0);
 
-  return <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
-    <SafeAreaView style={styles.safeArea}>
+  return <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
+    <View style={styles.modalBackdrop}>
+    <SafeAreaView style={[styles.safeArea, Platform.OS === 'web' && styles.webSafeArea]}>
       <View style={styles.header}><Text style={styles.title}>보유 재료 확인</Text><Pressable onPress={onClose}><Text style={styles.close}>×</Text></Pressable></View>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.recipeTitle}>{recipe.title}</Text>
@@ -53,6 +54,7 @@ export function RecipeAvailabilitySheet({ onClose, recipe, visible }: { onClose(
       </ScrollView>
       <View style={styles.footer}><Button label="확인" onPress={onClose} /></View>
     </SafeAreaView>
+    </View>
   </Modal>;
 }
 
@@ -65,6 +67,8 @@ function statusPresentation(status: string, hasManualItem: boolean) {
 function unitLabel(unit?: string) { return ({ COUNT: '개', G: 'g', KG: 'kg', ML: 'ml', L: 'L', PACK: '팩', BAG: '봉', BOTTLE: '병', CAN: '캔' } as Record<string, string>)[unit ?? ''] ?? ''; }
 
 const styles = StyleSheet.create({
+  modalBackdrop: { alignItems: 'center', backgroundColor: '#EDE7DF', flex: 1 },
+  webSafeArea: { maxWidth: 430, width: '100%' },
   safeArea: { backgroundColor: colors.canvas, flex: 1 }, header: { alignItems: 'center', backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingVertical: spacing.md }, title: { color: colors.text.primary, ...typography.title }, close: { color: colors.text.secondary, fontSize: 30, lineHeight: 34, paddingHorizontal: spacing.sm },
   content: { padding: spacing.xl, paddingBottom: spacing.giant }, recipeTitle: { color: colors.text.primary, ...typography.heading2 }, loader: { marginTop: spacing.xxl }, errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.medium, marginTop: spacing.lg, padding: spacing.md }, error: { color: colors.danger, ...typography.caption },
   resultBox: { borderRadius: radii.large, marginTop: spacing.lg, padding: spacing.lg }, successBox: { backgroundColor: colors.successSoft }, warningBox: { backgroundColor: colors.warningSoft }, successTitle: { color: colors.success, ...typography.title }, warningTitle: { color: colors.warning, ...typography.title }, resultSummary: { color: colors.text.secondary, ...typography.caption, marginTop: spacing.xs },

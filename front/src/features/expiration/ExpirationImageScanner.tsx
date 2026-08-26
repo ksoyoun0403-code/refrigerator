@@ -2,6 +2,8 @@
 import {
   Alert,
   Image,
+  Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +14,7 @@ import { Button } from '../../design-system/Button';
 import { colors, radii, spacing, typography } from '../../design-system/tokens';
 import { scanExpirationImage } from './expirationApi';
 import { ExpirationRegistrationForm } from './ExpirationRegistrationForm';
+import { ExpirationWebcamCapture } from './ExpirationWebcamCapture';
 import { ExpirationItem, ExpirationScanResult, LocalImage } from './types';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -27,9 +30,15 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   const [result, setResult] = useState<ExpirationScanResult>();
   const [isScanning, setIsScanning] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [isWebSourceOpen, setIsWebSourceOpen] = useState(false);
+  const [isWebcamOpen, setIsWebcamOpen] = useState(false);
 
   const openImageSource = () => {
     if (isScanning) return;
+    if (Platform.OS === 'web') {
+      setIsWebSourceOpen(true);
+      return;
+    }
     Alert.alert('식품 사진 선택', '이미지를 가져올 방법을 선택해주세요.', [
       { text: '취소', style: 'cancel' },
       { text: '앨범에서 선택', onPress: () => void pickFromLibrary() },
@@ -47,10 +56,12 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
   };
 
   const takePhoto = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('카메라 권한이 필요해요', '설정에서 카메라 권한을 허용해주세요.');
-      return;
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('카메라 권한이 필요해요', '설정에서 카메라 권한을 허용해주세요.');
+        return;
+      }
     }
     const pickerResult = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
@@ -77,6 +88,12 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
       fileName: asset.fileName ?? `expiration-${Date.now()}.jpg`,
       mimeType,
     });
+    setResult(undefined);
+    setErrorMessage(undefined);
+  };
+
+  const selectImage = (nextImage: LocalImage) => {
+    setImage(nextImage);
     setResult(undefined);
     setErrorMessage(undefined);
   };
@@ -109,14 +126,34 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
 
   if (!image) {
     return (
-      <Button
-        accessibilityHint="카메라로 촬영하거나 앨범에서 유통기한 사진을 선택합니다."
-        iconSource={expirationCameraIcon}
-        iconTintColor={colors.text.inverse}
-        label="유통기한 촬영"
-        onPress={openImageSource}
-        style={styles.captureButton}
-      />
+      <>
+        <Button
+          accessibilityHint="카메라로 촬영하거나 앨범에서 유통기한 사진을 선택합니다."
+          iconSource={expirationCameraIcon}
+          iconTintColor={colors.text.inverse}
+          label="유통기한 촬영"
+          onPress={openImageSource}
+          style={styles.captureButton}
+        />
+        <WebImageSourceModal
+          onClose={() => setIsWebSourceOpen(false)}
+          onPickLibrary={() => {
+            setIsWebSourceOpen(false);
+            void pickFromLibrary();
+          }}
+          onTakePhoto={() => {
+            setIsWebSourceOpen(false);
+            if (isDesktopWeb()) setIsWebcamOpen(true);
+            else void takePhoto();
+          }}
+          visible={isWebSourceOpen}
+        />
+        <ExpirationWebcamCapture
+          onCaptured={selectImage}
+          onClose={() => setIsWebcamOpen(false)}
+          visible={isWebcamOpen}
+        />
+      </>
     );
   }
 
@@ -161,7 +198,55 @@ export function ExpirationImageScanner({ onRegistered }: Props) {
           />
         </>
       )}
+      <WebImageSourceModal
+        onClose={() => setIsWebSourceOpen(false)}
+        onPickLibrary={() => {
+          setIsWebSourceOpen(false);
+          void pickFromLibrary();
+        }}
+        onTakePhoto={() => {
+          setIsWebSourceOpen(false);
+          if (isDesktopWeb()) setIsWebcamOpen(true);
+          else void takePhoto();
+        }}
+        visible={isWebSourceOpen}
+      />
+      <ExpirationWebcamCapture
+        onCaptured={selectImage}
+        onClose={() => setIsWebcamOpen(false)}
+        visible={isWebcamOpen}
+      />
     </View>
+  );
+}
+
+function WebImageSourceModal({
+  onClose,
+  onPickLibrary,
+  onTakePhoto,
+  visible,
+}: {
+  onClose(): void;
+  onPickLibrary(): void;
+  onTakePhoto(): void;
+  visible: boolean;
+}) {
+  if (Platform.OS !== 'web') return null;
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <Pressable accessibilityRole="button" onPress={onClose} style={styles.sourceBackdrop}>
+        <Pressable accessibilityRole="none" onPress={() => undefined} style={styles.sourceSheet}>
+          <Text style={styles.sourceTitle}>사진 가져오기</Text>
+          <Text style={styles.sourceDescription}>유통기한이 잘 보이는 사진을 선택해주세요.</Text>
+          <Button label="카메라로 촬영" onPress={onTakePhoto} style={styles.sourceButton} />
+          <Button label="사진 불러오기" onPress={onPickLibrary} style={styles.sourceButton} variant="secondary" />
+          <Pressable accessibilityRole="button" onPress={onClose} style={styles.sourceCancelButton}>
+            <Text style={styles.sourceCancelText}>취소</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -203,6 +288,10 @@ function inferMimeType(fileName?: string | null) {
   return 'application/octet-stream';
 }
 
+function isDesktopWeb() {
+  return Platform.OS === 'web' && typeof window !== 'undefined' && window.innerWidth >= 768;
+}
+
 const styles = StyleSheet.create({
   scannerCard: { marginTop: spacing.xxl },
   preview: { backgroundColor: colors.surfaceMuted, borderRadius: radii.xlarge, height: 260, width: '100%' },
@@ -211,6 +300,13 @@ const styles = StyleSheet.create({
   removeAction: { color: colors.danger, ...typography.label },
   primaryButton: { marginTop: spacing.xl, minHeight: 56, width: '100%' },
   captureButton: { borderRadius: radii.large, marginTop: spacing.xl, minHeight: 64, width: '100%' },
+  sourceBackdrop: { alignItems: 'center', backgroundColor: 'rgba(43, 27, 21, 0.5)', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  sourceSheet: { backgroundColor: colors.surface, borderRadius: radii.xlarge, maxWidth: 390, padding: spacing.xl, width: '100%' },
+  sourceTitle: { color: colors.text.primary, ...typography.heading2 },
+  sourceDescription: { color: colors.text.secondary, marginBottom: spacing.lg, marginTop: spacing.xs, ...typography.body },
+  sourceButton: { marginTop: spacing.sm, width: '100%' },
+  sourceCancelButton: { alignItems: 'center', marginTop: spacing.md, padding: spacing.sm },
+  sourceCancelText: { color: colors.text.secondary, ...typography.label },
   errorCard: { backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderRadius: radii.large, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
   errorTitle: { color: colors.danger, ...typography.bodyStrong },
   errorDescription: { color: colors.text.secondary, ...typography.label, fontWeight: '400', marginTop: spacing.xs },

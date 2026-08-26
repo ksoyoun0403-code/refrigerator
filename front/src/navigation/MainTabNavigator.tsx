@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import * as Notifications from 'expo-notifications';
 import { Alert, BackHandler, Image, ImageSourcePropType, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, interaction, spacing } from '../design-system/tokens';
@@ -8,6 +7,7 @@ import { CommunityScreen } from '../features/recipes/CommunityScreen';
 import { RecipeSuggestionScreen } from '../features/recipes/RecipeSuggestionScreen';
 import { AuthUser } from '../features/auth/types';
 import { MyPageScreen } from '../features/auth/MyPageScreen';
+import { subscribeToExpirationNotificationResponses } from '../features/expiration/expirationNotificationNavigation';
 
 type MainTab = 'refrigerator' | 'recipes' | 'community';
 type Destination = { tab: MainTab; communityView: 'feed' | 'cookbook' };
@@ -35,8 +35,7 @@ export function MainTabNavigator({ onChangePassword, onDeleteAccount, onLogout, 
   const [isMyPageOpen, setIsMyPageOpen] = useState(false);
 
   useEffect(() => {
-    const openNotification = (response: Notifications.NotificationResponse | null) => {
-      const data = response?.notification.request.content.data;
+    return subscribeToExpirationNotificationResponses((data) => {
       if (data?.type !== 'mydish.expiration-reminder' || data.userId !== user.id) return;
       setIsMyPageOpen(false);
       setIsPasswordModalOpen(false);
@@ -45,10 +44,7 @@ export function MainTabNavigator({ onChangePassword, onDeleteAccount, onLogout, 
       setCommunityBackSignal((current) => current + 1);
       setActiveTab('refrigerator');
       if (typeof data.itemId === 'string') setRequestedExpirationItemId(data.itemId);
-    };
-    void Notifications.getLastNotificationResponseAsync().then(openNotification);
-    const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
-    return () => subscription.remove();
+    });
   }, [user.id]);
 
   const navigate = (next: Destination) => {

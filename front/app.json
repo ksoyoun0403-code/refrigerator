@@ -12,6 +12,11 @@
         "policy": "appVersion"
       }
     },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/app-icon.png"
+    },
     "android": {
       "package": "io.github.ksoyoun0403code.mydish",
       "permissions": [
